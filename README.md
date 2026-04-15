@@ -57,17 +57,36 @@ Open **https://your-server-ip:5000** in your browser.
 
 ---
 
-## 🌉 Bridge Setup for WAN Emulation
+# Configuration
+## Create an 🔌 SubInterfaces / VLANs
+1.  Physical Interfaces & VLAN Sub-interfaces
+    - Make sure your physical interfaces are listed here.
+    - Create your SubInterface and VLANs to be used later by a Bridge. 
 
-To insert this Linux box transparently between a firewall and WAN link:
 
-```bash
-sudo bash bridge_setup.sh br0 eth0 eth1
-```
+## Create a 🌉 via Bridge Manager
+1.  Using the SubInterfaces created in the 🔌 Interfaces / VLANs
+    - Pair them with a Bridge; that bridge interface will be configured later with your traffic control. 
+    - Optionally, you can bridge whole interfaces if you want. 
 
-This creates: `Firewall ↔ eth0 [br0] eth1 ↔ WAN`
 
-Apply impairments to `br0` and they affect all traffic passing through.
+## 🎛  Applying TC Impairments
+1. Open the TC Emulation tab
+2. Find the interface or bridge you want to impair
+3. Set values (0 = disabled for all fields):
+   - Latency (ms)    : one-way added delay
+   - Jitter (ms)     : random variation on top of latency
+   - Loss (%)        : random packet drop rate
+   - Duplicate (%)   : probability of packet duplication
+   - Corrupt (%)     : probability of single-bit corruption
+   - Rate mbit       : bandwidth cap (0 = unlimited)
+4. Click Apply
+5. Click Reset to remove all impairments
+
+For bridges: applying to the bridge card splits values across all member
+interfaces. Use "Member controls" to fine-tune individual interfaces.
+
+
 
 ---
 
