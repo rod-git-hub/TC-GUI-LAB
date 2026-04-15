@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>TC Lab v8 — Login</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1117;color:#e0e0e0;font-family:"Segoe UI",system-ui,sans-serif;
+     display:flex;align-items:center;justify-content:center;min-height:100vh}
+.box{background:#1a1d27;border:1px solid #2a2d3e;border-radius:14px;
+     padding:34px 38px;width:340px;box-shadow:0 8px 40px #000a}
+.logo{text-align:center;font-size:2.2rem;margin-bottom:6px}
+h2{text-align:center;color:#00d4ff;font-size:1.1rem;margin-bottom:22px;font-weight:700}
+label{display:block;color:#7a7f94;font-size:.75rem;margin-bottom:3px;margin-top:14px}
+input[type=text],input[type=password]{width:100%;background:#11141e;border:1px solid #2a2d3e;
+  color:#e0e0e0;padding:9px 12px;border-radius:7px;font-size:.9rem;outline:none}
+input:focus{border-color:#00d4ff}
+.rem{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:.78rem;color:#7a7f94;cursor:pointer}
+.rem input{width:auto;margin:0}
+button{width:100%;background:#00d4ff;color:#000;border:none;border-radius:7px;
+       padding:11px;font-size:.92rem;font-weight:700;cursor:pointer;margin-top:22px}
+button:hover{opacity:.88}
+.err{background:#2a0a0a;color:#ff5252;border-radius:6px;padding:8px 12px;
+     font-size:.78rem;margin-bottom:4px;line-height:1.4}
+.hint{text-align:center;color:#7a7f94;font-size:.72rem;margin-top:14px}
+.tls{text-align:center;color:#00e676;font-size:.72rem;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo">⚡</div>
+  <h2>TC Lab v8</h2>
+  <div class="tls">🔒 TLS Encrypted</div>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}{% for m in messages %}<div class="err">{{ m }}</div>{% endfor %}{% endif %}
+  {% endwith %}
+  <form method="POST" autocomplete="on">
+    <label>Username</label>
+    <input type="text" name="username" autofocus autocomplete="username"/>
+    <label>Password</label>
+    <input type="password" name="password" autocomplete="current-password"/>
+    <label class="rem"><input type="checkbox" name="remember"/> Remember me</label>
+    <button type="submit">Login →</button>
+  </form>
+  <div class="hint">Default: admin / tclab123 — change after first login</div>
+</div>
+</body>
+</html>

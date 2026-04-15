@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>TC Lab v8</title>
+<style>
+:root{
+  --bg:#0f1117;--card:#1a1d27;--border:#2a2d3e;--accent:#00d4ff;
+  --green:#00e676;--red:#ff5252;--yellow:#ffd740;--orange:#ff9800;
+  --purple:#bb86fc;--text:#e0e0e0;--muted:#7a7f94;
+  /* theme-aware surface colors */
+  --bg2:#141209;--bg3:#1c1a10;--bg4:#101820;--bg5:#181c28;
+  --bg6:#111420;--input-bg:#11141e;--pre-col:#00e676}
+[data-theme="light"]{
+  --bg:#f0f2f8;--card:#ffffff;--border:#d4d8ea;--accent:#0066bb;
+  --green:#006b3c;--red:#c0392b;--yellow:#7a5700;--orange:#b34d00;
+  --purple:#5b2d9e;--text:#1a1d2e;--muted:#5a607a;
+  --bg2:#e8f7f5;--bg3:#f0faf9;--bg4:#e8f4fd;--bg5:#f4f6ff;
+  --bg6:#eef1ff;--input-bg:#f4f6fb;--pre-col:#006b3c}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;font-size:14px}
+header{background:var(--card);border-bottom:1px solid var(--border);
+       padding:10px 18px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+header h1{font-size:1.02rem;font-weight:700;color:var(--accent)}
+.badge{background:#1e3a4f;color:var(--accent);padding:2px 9px;border-radius:12px;font-size:.71rem}
+.badge.live{background:#0a2a1a;color:var(--green)}
+.tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:9px 18px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;
+     font-size:.82rem;font-weight:600;transition:.15s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+main{max-width:1300px;margin:14px auto;padding:0 13px}
+.panel{display:none}.panel.active{display:block}
+
+/* ── Bridge groups in TC tab ─────────────────────────────── */
+.bridge-group{background:var(--bg2);border:1px solid #5a4a00;border-radius:11px;
+  padding:12px 12px 14px;margin-bottom:14px}
+.bridge-group-hdr{display:flex;align-items:center;gap:8px;margin-bottom:11px;
+  color:var(--yellow);font-weight:700;font-size:.84rem}
+.bridge-group-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(305px,1fr));gap:11px}
+.section-hdr{color:var(--muted);font-size:.78rem;font-weight:700;
+  padding:6px 4px 8px;letter-spacing:.5px;text-transform:uppercase}
+.standalone-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(305px,1fr));gap:11px}
+.bridge-group-hdr{cursor:pointer;user-select:none}
+.bridge-group-hdr:hover{opacity:.88}
+.br-toggle-btn{background:var(--border);border:none;border-radius:5px;
+  color:var(--text);padding:3px 9px;font-size:.75rem;cursor:pointer;font-weight:700;
+  margin-left:auto;white-space:nowrap}
+.br-member-summary{display:flex;flex-wrap:wrap;align-items:center;gap:5px;
+  padding:7px 4px 3px;border-top:1px dashed var(--border);margin-top:8px}
+.br-member-summary .ms-label{color:var(--muted);font-size:.72rem;margin-right:2px}
+[data-theme="light"] .br-toggle-btn{background:#e0e4f0;color:#1a1d2e}
+
+/* ── Cards ───────────────────────────────────────────────── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px}
+.card.is-bridge{border-color:#5a4a00;background:var(--bg3)}
+.card.is-member{border-color:#003a5a;background:var(--bg4)}
+.card.has-tc{border-color:var(--green)}
+.card-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.card-title{font-weight:700;font-size:.86rem;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block}
+.dot-up{background:var(--green)}.dot-dn{background:var(--red)}.dot-br{background:var(--yellow)}
+.label-row{display:flex;align-items:center;gap:5px;margin-bottom:7px}
+.label-input{flex:1;background:transparent;border:none;border-bottom:1px dashed var(--border);
+  color:var(--purple);font-size:.74rem;padding:2px 3px;outline:none;font-style:italic}
+.label-input:focus{border-bottom-color:var(--purple)}
+.label-input::placeholder{color:var(--muted)}
+.label-save{background:none;border:none;cursor:pointer;color:var(--purple);font-size:.73rem;opacity:.7}
+.label-save:hover{opacity:1}
+label{display:block;color:var(--muted);font-size:.72rem;margin-bottom:2px;margin-top:6px}
+input[type=number],input[type=text],select{
+  width:100%;background:var(--input-bg);border:1px solid var(--border);
+  color:var(--text);padding:5px 8px;border-radius:5px;font-size:.81rem;outline:none}
+input:focus,select:focus{border-color:var(--accent)}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.r3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+button{padding:6px 11px;border:none;border-radius:6px;cursor:pointer;font-size:.77rem;font-weight:600;transition:.15s}
+.bA{background:var(--accent);color:#000}.bA:hover{opacity:.85}
+.bG{background:#0a2a1a;color:var(--green);border:1px solid var(--green)}
+.bB{background:#0a1a2a;color:var(--accent);border:1px solid var(--accent)}
+.bR{background:#2a0a0a;color:var(--red);border:1px solid var(--red)}
+.bY{background:#2a2000;color:var(--yellow);border:1px solid var(--yellow)}
+.bN{background:#2a2d3e;color:var(--text)}.bN:hover{background:#3a3d4e}
+.bP{background:#1a0a2a;color:var(--purple);border:1px solid var(--purple)}
+.bgrp{display:flex;gap:5px;margin-top:9px;flex-wrap:wrap}
+.sb{font-size:.71rem;margin-top:6px;padding:5px 8px;border-radius:4px;
+    min-height:20px;word-break:break-word;line-height:1.4}
+.ok{background:#0a2a1a;color:var(--green)}.err{background:#2a0a0a;color:var(--red)}
+.info{background:#0a1a2a;color:var(--accent)}.warn{background:#2a1a00;color:var(--orange)}
+.wbanner{border-radius:5px;padding:5px 9px;font-size:.72rem;margin-top:5px;line-height:1.5}
+.tag{padding:2px 6px;border-radius:9px;font-size:.68rem;margin-right:2px;white-space:nowrap}
+.tG{background:#0a2a1a;color:var(--green)}.tY{background:#2a2000;color:var(--yellow)}
+.tB{background:#0a1a2a;color:var(--accent)}.tR{background:#2a0a0a;color:var(--red)}
+.tP{background:#1a0a2a;color:var(--purple)}
+/* ── Interface tree (VLAN tab) ───────────────────────────── */
+.bt{width:100%;border-collapse:collapse;font-size:.80rem}
+.bt th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)}
+.bt td{padding:6px 8px;border-bottom:1px solid #1a1d2a;vertical-align:middle}
+.phy-row{background:var(--bg5)}
+.phy-row td:first-child{font-weight:700}
+.vlan-row{background:var(--bg6)}
+.vlan-row td:first-child{padding-left:26px;color:var(--yellow)}
+.vlan-row td:first-child::before{content:"└─ ";color:var(--muted)}
+.toggle-btn{background:none;border:none;cursor:pointer;color:var(--accent);
+  font-size:.75rem;padding:2px 5px;opacity:.8}.toggle-btn:hover{opacity:1}
+/* ── Modals ──────────────────────────────────────────────── */
+.modal-bg{display:none;position:fixed;inset:0;background:#000c;z-index:100;
+  align-items:center;justify-content:center}
+.modal-bg.show{display:flex}
+.mbox{background:var(--card);border:1px solid var(--border);border-radius:11px;
+      padding:18px;max-width:640px;width:95%;max-height:80vh;overflow:auto}
+pre{font:13px/1.4 "Courier New",monospace;color:var(--pre-col);white-space:pre-wrap}
+.mhdr{font-weight:700;margin-bottom:9px;color:var(--accent);
+      display:flex;justify-content:space-between;align-items:center}
+.x{cursor:pointer;color:var(--red);padding:2px 5px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.chip{background:#1a2a3a;border:1px solid var(--accent);color:var(--accent);
+      padding:3px 9px;border-radius:10px;cursor:pointer;font-size:.75rem}
+.chip:hover{background:#0a3a5a}
+
+.theme-toggle{display:flex;align-items:center;gap:10px;margin-top:18px;
+  border-top:1px solid var(--border);padding-top:14px}
+.toggle-track{width:44px;height:24px;background:var(--border);border-radius:12px;
+  cursor:pointer;position:relative;transition:.2s}
+.toggle-track.on{background:var(--accent)}
+.toggle-thumb{width:18px;height:18px;background:#fff;border-radius:50%;
+  position:absolute;top:3px;left:3px;transition:.2s}
+.toggle-track.on .toggle-thumb{left:23px}
+
+/* ── Idle warning bar ────────────────────────────────────── */
+#idle-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;
+  background:#2a1000;border-top:2px solid var(--orange);color:var(--orange);
+  padding:10px 20px;font-size:.84rem;display:none;
+  align-items:center;justify-content:space-between}
+#idle-bar.show{display:flex}
+.scan-banner{background:#0a2a1a;border:1px solid var(--green);color:var(--green);
+  padding:6px 13px;border-radius:6px;font-size:.77rem;margin-bottom:12px;display:none}
+
+[data-theme="light"] .tG{background:#d4f5e3;color:#006b3c}
+[data-theme="light"] .tY{background:#e0f2f1;color:#00695c}
+[data-theme="light"] .tB{background:#d0eaff;color:#0055aa}
+[data-theme="light"] .tR{background:#ffd6d6;color:#c0392b}
+[data-theme="light"] .tP{background:#ead6ff;color:#5b2d9e}
+[data-theme="light"] .bA{background:#0066bb;color:#fff}
+[data-theme="light"] .bG{background:#d4f5e3;color:#006b3c;border-color:#006b3c}
+[data-theme="light"] .bB{background:#d0eaff;color:#0055aa;border-color:#0055aa}
+[data-theme="light"] .bR{background:#ffd6d6;color:#c0392b;border-color:#c0392b}
+[data-theme="light"] .bY{background:#e0f2f1;color:#00695c;border-color:#00695c}
+[data-theme="light"] .bN{background:#e8eaf0;color:#1a1d2e}
+[data-theme="light"] .bP{background:#ead6ff;color:#5b2d9e;border-color:#5b2d9e}
+[data-theme="light"] .ok{background:#d4f5e3;color:#006b3c}
+[data-theme="light"] .err{background:#ffd6d6;color:#c0392b}
+[data-theme="light"] .info{background:#d0eaff;color:#0055aa}
+[data-theme="light"] .warn{background:#e0f2f1;color:#00695c}
+[data-theme="light"] .wbanner[style*="orange"]{background:#e0f2f1!important;color:#00695c!important;border-color:#00897b!important}
+[data-theme="light"] .wbanner[style*="accent"]{background:#d0eaff!important;color:#0055aa!important;border-color:#0055aa!important}
+[data-theme="light"] .chip{background:#e8f0ff;border-color:#0066bb;color:#0066bb}
+[data-theme="light"] .chip:hover{background:#c8d8f8}
+[data-theme="light"] .scan-banner{background:#d4f5e3;border-color:#006b3c;color:#006b3c}
+[data-theme="light"] .badge{background:#d0eaff;color:#0055aa}
+[data-theme="light"] .badge.live{background:#d4f5e3;color:#006b3c}
+[data-theme="light"] .bridge-group{border-color:#00897b;background:var(--bg2)}
+[data-theme="light"] .bridge-group-hdr{color:#00695c}
+[data-theme="light"] .section-hdr{color:#5a607a}
+[data-theme="light"] .toggle-track{background:#c8ccd8}
+[data-theme="light"] .toggle-track.on{background:#0066bb}
+[data-theme="light"] #idle-bar{background:#e0f2f1;border-color:#00897b;color:#00695c}
+
+/* ── Bridge member slide-out drawer ───────────────────── */
+.br-drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1100;
+  display:none;backdrop-filter:blur(2px)}
+.br-drawer-overlay.open{display:block}
+.br-drawer{position:fixed;right:-900px;top:0;width:min(880px,94vw);height:100vh;
+  background:var(--card);border-left:2px solid var(--accent);z-index:1101;
+  overflow-y:auto;transition:right .28s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column}
+.br-drawer.open{right:0;box-shadow:-8px 0 40px rgba(0,0,0,.5)}
+.br-drawer-hdr{display:flex;align-items:center;gap:8px;padding:16px 18px 12px;
+  border-bottom:1px solid var(--border);position:sticky;top:0;
+  background:var(--card);z-index:1;flex-wrap:wrap}
+.br-drawer-body{padding:16px 18px;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));
+  gap:14px;align-items:start;flex:1}
+.br-open-btn{background:var(--accent);color:#000;border:none;border-radius:6px;
+  padding:4px 11px;font-size:.72rem;font-weight:700;cursor:pointer;white-space:nowrap}
+.br-open-btn:hover{opacity:.85}
+[data-theme="light"] .br-drawer{border-left-color:var(--accent)}
+[data-theme="light"] .br-open-btn{background:var(--accent);color:#fff}
+
+.bridge-groups-grid{display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(480px,1fr));gap:14px;
+  margin-bottom:18px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ TC Lab v8</h1>
+  <span class="badge" id="b-if">– ifaces</span>
+  <span class="badge" id="b-br">– bridges</span>
+  <span class="badge live" id="b-live" style="display:none">● Live</span>
+  <div style="margin-left:auto;display:flex;gap:7px">
+    <button class="bN" style="font-size:.75rem;padding:4px 10px" onclick="loadAll()">↻ Refresh</button>
+    <button class="bP" style="font-size:.75rem;padding:4px 10px" onclick="openSettings()">⚙ Settings</button>
+    <a href="/logout"><button class="bR" style="font-size:.75rem;padding:4px 10px">Logout</button></a>
+  </div>
+</header>
+<main>
+  <div class="scan-banner" id="scan-banner"></div>
+  <div class="tabs">
+    <div class="tab active" data-t="tc"       onclick="switchTab('tc')">🎛 TC Emulation</div>
+    <div class="tab"        data-t="vlans"    onclick="switchTab('vlans')">🔌 Interfaces / VLANs</div>
+    <div class="tab"        data-t="bridges"  onclick="switchTab('bridges')">🌉 Bridge Manager</div>
+    <div class="tab"        data-t="profiles" onclick="switchTab('profiles')">📁 Profiles</div>
+  </div>
+
+  <!-- TC Emulation — grouped by bridge -->
+  <div id="tab-tc" class="panel active">
+    <div id="iface-grid"></div>
+  </div>
+
+  <!-- Interfaces / VLANs — tree view -->
+  <div id="tab-vlans" class="panel">
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-hdr">
+        <div class="card-title">🔌 Physical Interfaces &amp; VLAN Sub-interfaces</div>
+        <button class="bB" onclick="loadVlanTab()">↻ Reload</button>
+      </div>
+      <table class="bt">
+        <thead><tr><th>Interface</th><th>Type</th><th>State</th><th>MTU</th><th>Actions</th></tr></thead>
+        <tbody id="phy-tbody"><tr><td colspan="5" style="color:var(--muted)">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:10px">➕ Create 802.1q VLAN Sub-interface</div>
+      <div class="r3">
+        <div><label>Parent Interface</label><select id="vl-parent"></select></div>
+        <div><label>VLAN ID (1-4094)</label>
+          <input type="number" id="vl-vid" min="1" max="4094" placeholder="100"/></div>
+        <div><label>Custom Name (blank = auto)</label>
+          <input type="text" id="vl-name" placeholder="e.g. eth0.100"/></div>
+      </div>
+      <div class="bgrp"><button class="bA" onclick="doCreateVlan()">▶ Create VLAN</button></div>
+      <div id="vl-status" class="sb info"></div>
+    </div>
+  </div>
+
+  <!-- Bridge Manager -->
+  <div id="tab-bridges" class="panel">
+    <div class="card">
+      <div class="card-hdr">
+        <div class="card-title"><span class="dot dot-br"></span>Active Bridges</div>
+        <button class="bB" onclick="loadAll().then(renderBrTab)">↻ Reload</button>
+      </div>
+      <table class="bt">
+        <thead><tr><th>Bridge</th><th>State</th><th>Members</th><th>Actions</th></tr></thead>
+        <tbody id="br-tbody"><tr><td colspan="4" style="color:var(--muted)">Loading…</td></tr></tbody>
+      </table>
+      <div id="br-status" class="sb info" style="margin-top:7px"></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="card-title" style="margin-bottom:9px">➕ Create Bridge</div>
+      <div class="r3">
+        <div><label>Name</label><input id="nb-name" type="text" placeholder="br0" value="br0"/></div>
+        <div><label>Member 1</label><select id="nb-if1"><option value="">-- none --</option></select></div>
+        <div><label>Member 2</label><select id="nb-if2"><option value="">-- none --</option></select></div>
+      </div>
+      <div style="margin-top:6px"><label style="cursor:pointer;display:flex;align-items:center;gap:5px">
+        <input type="checkbox" id="nb-stp"/> STP</label></div>
+      <div class="bgrp"><button class="bA" onclick="doCreateBridge()">▶ Create Bridge</button></div>
+      <div id="nb-status" class="sb info"></div>
+    </div>
+  </div>
+
+  <!-- Profiles -->
+  <div id="tab-profiles" class="panel">
+    <div class="card">
+      <div class="card-title" style="margin-bottom:9px">📁 Profiles</div>
+      <div class="chips" id="p-chips">Loading…</div>
+      <div style="margin-top:12px;display:flex;gap:7px;align-items:flex-end;flex-wrap:wrap">
+        <div><label>Name</label><input id="p-name" type="text" placeholder="my_profile" style="width:130px"/></div>
+        <div><label>From Interface</label><select id="p-iface" style="width:120px"></select></div>
+        <button class="bG" style="margin-bottom:1px" onclick="doSaveProfile()">💾 Save</button>
+      </div>
+      <div id="p-status" class="sb info" style="margin-top:7px"></div>
+    </div>
+    <div class="card" style="margin-top:11px">
+      <div class="card-title" style="margin-bottom:7px">🔍 Preview</div>
+      <pre id="p-preview" style="color:var(--muted);font-size:.79rem">Click a chip to preview</pre>
+    </div>
+  </div>
+</main>
+
+<!-- Stats modal -->
+<div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="mbox">
+    <div class="mhdr"><span id="m-title">Stats</span><span class="x" onclick="closeModal()">✕</span></div>
+    <pre id="m-body">Loading…</pre>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-bg" id="set-modal" onclick="if(event.target===this)closeSettings()">
+  <div class="mbox" style="max-width:430px">
+    <div class="mhdr">⚙ Settings<span class="x" onclick="closeSettings()">✕</span></div>
+    <div style="color:var(--muted);font-size:.78rem;margin-bottom:12px">
+      Logged in as: <b id="who" style="color:var(--accent)"></b>
+      &nbsp;|&nbsp; Role: <b id="who-role" style="color:var(--purple)"></b>
+    </div>
+
+    <!-- Change password -->
+    <div style="font-weight:700;font-size:.84rem;margin-bottom:8px">🔒 Change Password</div>
+    <label>Current</label><input type="password" id="pw-cur" autocomplete="current-password"/>
+    <label>New (min 8)</label><input type="password" id="pw-new" autocomplete="new-password"/>
+    <label>Confirm</label><input type="password" id="pw-cfm" autocomplete="new-password"/>
+    <div class="bgrp" style="margin-top:9px">
+      <button class="bA" onclick="doChangePw()">Save Password</button>
+    </div>
+    <div id="pw-status" class="sb info" style="margin-top:7px"></div>
+
+    <!-- Idle timeout (admin only) -->
+    <div id="timeout-section" style="display:none;margin-top:18px;border-top:1px solid var(--border);padding-top:14px">
+      <div style="font-weight:700;font-size:.84rem;margin-bottom:8px">⏱ Idle Timeout</div>
+      <p style="color:var(--muted);font-size:.75rem;margin-bottom:8px;line-height:1.5">
+        Automatically log out users after N minutes of inactivity.
+        Set to <b>0</b> to disable. A 60-second warning banner appears before logout.
+      </p>
+      <div style="display:flex;align-items:center;gap:9px">
+        <div style="flex:1"><label>Timeout (minutes, 0 = disabled)</label>
+          <input type="number" id="timeout-val" min="0" max="480" style="width:100px"/></div>
+        <button class="bG" style="margin-top:18px" onclick="doSaveTimeout()">💾 Save</button>
+      </div>
+      <div id="timeout-status" class="sb info" style="margin-top:7px"></div>
+    </div>
+
+    <!-- Theme toggle -->
+    <div class="theme-toggle">
+      <span style="font-size:.85rem;font-weight:700">🎨 Theme</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+        <span style="font-size:.78rem;color:var(--muted)">🌙 Dark</span>
+        <div class="toggle-track" id="theme-track" onclick="toggleTheme()">
+          <div class="toggle-thumb"></div>
+        </div>
+        <span style="font-size:.78rem;color:var(--muted)">☀️ Light</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Idle warning bar (bottom of screen) -->
+<div id="idle-bar">
+  <span>⚠ Idle timeout: logging out in <b id="idle-countdown">60</b>s — click anywhere to stay</span>
+  <button class="bG" onclick="resetIdleTimer()">Stay Logged In</button>
+</div>
+
+<script>
+let ifaces=[],bridges={},ifMeta={},unbridged=[],tcState={},profiles={},labels={};
+let vlanData={vlans:[],physical:[]};
+let idleTimeout=30, lastActivity=Date.now(), idleWarningShown=false;
+
+// ── Idle timer ─────────────────────────────────────────────────────────────
+['mousemove','mousedown','keydown','scroll','touchstart'].forEach(e=>{
+  document.addEventListener(e,()=>{lastActivity=Date.now();hideIdleBar();},{passive:true});
+});
+
+function resetIdleTimer(){lastActivity=Date.now();hideIdleBar();}
+function hideIdleBar(){
+  document.getElementById('idle-bar').classList.remove('show');
+  idleWarningShown=false;}
+
+setInterval(()=>{
+  if(idleTimeout<=0) return;
+  const idle=(Date.now()-lastActivity)/1000;
+  const limit=idleTimeout*60;
+  if(idle>=limit){window.location.href='/logout';return;}
+  const remaining=Math.ceil(limit-idle);
+  if(remaining<=60){
+    const bar=document.getElementById('idle-bar');
+    bar.classList.add('show');
+    document.getElementById('idle-countdown').textContent=remaining;
+  }else{
+    hideIdleBar();
+  }
+},4000);
+
+async function loadConfig(){
+  const r=await api('/api/config');
+  if(r&&r.idle_timeout_minutes!==undefined){
+    idleTimeout=r.idle_timeout_minutes;
+    const el=document.getElementById('timeout-val');
+    if(el) el.value=idleTimeout;
+  }
+}
+
+// ── API helper ─────────────────────────────────────────────────────────────
+async function api(path,method='GET',body=null){
+  try{
+    const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},
+      body:body?JSON.stringify(body):null});
+    if(r.status===401){location.href='/login';return{ok:false};}
+    return await r.json();
+  }catch(e){return{ok:false,stderr:String(e)};}
+}
+function sb(id,msg,cls){const e=document.getElementById(id);if(e){e.textContent=msg;e.className='sb '+cls;}}
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if(name==='bridges') renderBrTab();
+  if(name==='profiles') renderProfiles();
+  if(name==='vlans') loadVlanTab();
+}
+
+// ── TC Card builder ────────────────────────────────────────────────────────
+function buildCard(iface){
+  const id=iface.replace(/[^a-z0-9]/gi,'_');
+  const meta=ifMeta[iface]||{};
+  const isBr=meta.is_bridge,isMb=meta.is_member,up=meta.state==='up';
+  const cur=tcState[iface]||{},v=k=>(cur[k]!==undefined?cur[k]:0);
+  const hasTC=Object.values(cur).some(x=>x>0);
+  const lbl=labels[iface]||'';
+  const dot=isBr?'dot-br':(up?'dot-up':'dot-dn');
+  let tags='';
+  if(isBr){const mbs=(bridges[iface]||{}).members||[];
+    tags+=`<span class="tag tY">bridge</span><span class="tag tB">${mbs.length} members</span>`;}
+  if(isMb) tags+=`<span class="tag tB">→${meta.master}</span>`;
+  if(!up)  tags+=`<span class="tag tR">down</span>`;
+  if(hasTC)tags+=`<span class="tag tG">● tc active</span>`;
+  let banner='';
+  if(isBr){const mbs=(bridges[iface]||{}).members||[],n=mbs.length||2;
+    banner=`<div class="wbanner" style="background:#2a1a00;border:1px solid var(--orange);color:var(--orange)">
+    ⚡ Apply splits values across ${n} members (${(150/n).toFixed(0)}ms each for 150ms target RTT).
+    </div>`;}
+  else if(isMb){banner=`<div class="wbanner" style="background:#001520;border:1px solid var(--accent);color:var(--accent)">
+    Member of <b>${meta.master}</b> — shows split value applied by bridge.</div>`;}
+  return `<div class="card ${isBr?'is-bridge':''} ${isMb?'is-member':''} ${hasTC?'has-tc':''}" id="card-${id}">
+  <div class="card-hdr">
+    <div class="card-title"><span class="dot ${dot}"></span>${iface} ${tags}</div>
+    <button class="bY" style="padding:3px 7px;font-size:.7rem" onclick="showStats('${iface}')">📊</button>
+  </div>
+  <div class="label-row">
+    <span style="color:var(--muted);font-size:.7rem">📝</span>
+    <input class="label-input" id="lbl-${id}" placeholder="Add comment…"
+      value="${lbl.replace(/"/g,'&quot;')}"
+      onblur="saveLabel('${iface}')"
+      onkeydown="if(event.key==='Enter'){saveLabel('${iface}');this.blur();}"/>
+    <button class="label-save" onclick="saveLabel('${iface}')">✓</button>
+  </div>
+  ${banner}
+  <div class="r2">
+    <div><label>Latency (ms)</label><input type="number" id="${id}_lat" min="0" max="60000" value="${v('latency_ms')}"/></div>
+    <div><label>Jitter (ms)</label><input type="number" id="${id}_jit" min="0" max="10000" value="${v('jitter_ms')}"/></div>
+  </div>
+  <div class="r2">
+    <div><label>Loss (%)</label><input type="number" id="${id}_loss" min="0" max="100" step="0.1" value="${v('loss_pct')}"/></div>
+    <div><label>Duplicate (%)</label><input type="number" id="${id}_dup" min="0" max="100" step="0.1" value="${v('duplicate_pct')}"/></div>
+  </div>
+  <div class="r2">
+    <div><label>Corrupt (%)</label><input type="number" id="${id}_cor" min="0" max="100" step="0.1" value="${v('corrupt_pct')}"/></div>
+    <div><label>Rate mbit (0=∞)</label><input type="number" id="${id}_rate" min="0" max="100000" step="0.1" value="${v('rate_mbit')}"/></div>
+  </div>
+  <div class="bgrp">
+    <button class="bA" onclick="doApply('${iface}')">▶ Apply</button>
+    <button class="bN" onclick="doReset('${iface}')">⬛ Reset</button>
+    <button class="bB" onclick="openLoadProfile('${iface}')">📂 Profile</button>
+  </div>
+  <div id="sb-${id}" class="sb ${hasTC?'ok':'info'}">${hasTC?'✔ tc active — loaded from scan':''}</div>
+  </div>`;}
+
+// ── Bridge member drawer ───────────────────────────────────────────────────
+function openBrDrawer(br){
+  const info=bridges[br]||{};
+  const members=(info.members||[]).filter(m=>ifaces.includes(m));
+  // Header
+  const st=info.state==='up'?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>';
+  const liveTC=members.some(m=>Object.values(tcState[m]||{}).some(x=>x>0))
+    ?'<span class="tag tG">● tc active</span>':'';
+  document.getElementById('br-drawer-hdr').innerHTML=`
+    <span style="font-size:1rem;font-weight:700">🌉 ${br}</span>
+    ${st}
+    <span class="tag tB">${members.length} member${members.length!==1?'s':''}</span>
+    ${liveTC}
+    <button class="bN" style="margin-left:auto;padding:4px 11px;font-size:.78rem"
+      onclick="closeBrDrawer()">✕ Close</button>`;
+  // Body
+  const body=document.getElementById('br-drawer-body');
+  if(!members.length){
+    body.innerHTML='<div style="color:var(--muted);text-align:center;padding:50px 0;font-size:.88rem">No members — add interfaces in Bridge Manager</div>';
+  } else {
+    body.innerHTML=members.map(m=>buildCard(m)).join('');
+  }
+  document.getElementById('br-drawer').classList.add('open');
+  document.getElementById('br-drawer-overlay').classList.add('open');
+}
+function closeBrDrawer(){
+  document.getElementById('br-drawer').classList.remove('open');
+  document.getElementById('br-drawer-overlay').classList.remove('open');
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeBrDrawer();});
+
+// ── Live TC badge ───────────────────────────────────────────────────────────
+function updateLiveBadge(){
+  const brSet=new Set(Object.keys(bridges));
+  const liveCnt=Object.keys(tcState).filter(k=>
+    !brSet.has(k) && Object.values(tcState[k]).some(x=>Number(x)>0)
+  ).length;
+  const lb=document.getElementById('b-live');
+  if(liveCnt>0){lb.style.display='';lb.textContent=`● ${liveCnt} tc active`;}
+  else lb.style.display='none';
+}
+
+// ── TC Grid — bridge card in grid + drawer for members ─────────────────────
+function renderTCGrid(){
+  const grid=document.getElementById('iface-grid');
+  let html='';const done=new Set();
+
+  // 1. Bridge groups — 2-per-row grid; members → drawer
+  const brKeys=Object.keys(bridges).filter(br=>ifaces.includes(br));
+  if(brKeys.length){
+    html+='<div class="bridge-groups-grid">';
+    for(const br of brKeys){
+      const info=bridges[br];
+      done.add(br);
+      const members=(info.members||[]).filter(m=>ifaces.includes(m));
+      members.forEach(m=>done.add(m));
+      const brState=info.state==='up'?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>';
+      const liveTC=(tcState[br]||members.some(m=>Object.values(tcState[m]||{}).some(x=>x>0)))
+        ?'<span class="tag tG">● tc active</span>':'';
+      const memberChips=members.length
+        ?members.map(m=>{
+            const hasTC=Object.values(tcState[m]||{}).some(x=>x>0);
+            return `<span class="tag ${hasTC?'tG':'tB'}" style="font-size:.68rem">${m}${hasTC?' ●':''}</span>`;
+          }).join('')
+        :'<span style="color:var(--muted);font-size:.7rem">no members</span>';
+      html+=`<div class="bridge-group">
+        <div class="bridge-group-hdr">
+          <span>🌉 ${br}</span> ${brState}
+          <span class="tag tB">${members.length} member${members.length!==1?'s':''}</span>
+          ${liveTC}
+          ${members.length?`<button class="br-open-btn" onclick="openBrDrawer('${br}')">⊞ Member controls</button>`:''}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;padding:6px 4px 4px;
+          border-bottom:1px dashed var(--border);margin-bottom:8px">
+          ${memberChips}
+        </div>
+        <div class="bridge-group-grid">${buildCard(br)}</div>
+      </div>`;
+    }
+    html+='</div>';
+  }
+
+  // 2. Standalone interfaces
+  const alone=ifaces.filter(i=>!done.has(i));
+  if(alone.length){
+    html+=`<div class="section-hdr">🔌 Standalone Interfaces</div>
+    <div class="standalone-grid">${alone.map(i=>buildCard(i)).join('')}</div>`;
+  }
+  grid.innerHTML=html;
+}
+
+function getConf(iface){
+  const id=iface.replace(/[^a-z0-9]/gi,'_');
+  const v=k=>parseFloat(document.getElementById(`${id}_${k}`)?.value)||0;
+  return{latency_ms:v('lat'),jitter_ms:v('jit'),loss_pct:v('loss'),
+         duplicate_pct:v('dup'),corrupt_pct:v('cor'),rate_mbit:v('rate')};}
+function setConf(iface,cfg){
+  const id=iface.replace(/[^a-z0-9]/gi,'_');
+  const s=(k,v)=>{const e=document.getElementById(`${id}_${k}`);if(e)e.value=v||0;};
+  s('lat',cfg.latency_ms);s('jit',cfg.jitter_ms);s('loss',cfg.loss_pct);
+  s('dup',cfg.duplicate_pct);s('cor',cfg.corrupt_pct);s('rate',cfg.rate_mbit);}
+async function saveLabel(iface){
+  const id=iface.replace(/[^a-z0-9]/gi,'_');
+  const el=document.getElementById(`lbl-${id}`);
+  if(!el) return;
+  await api(`/api/labels/${iface}`,'POST',{label:el.value.trim()});
+  labels[iface]=el.value.trim();}
+async function doApply(iface){
+  const id=iface.replace(/[^a-z0-9]/gi,'_');
+  const conf=getConf(iface); sb(`sb-${id}`,'Applying…','info');
+  const r=await api(`/api/apply/${iface}`,'POST',conf);
+  if(r.is_bridge){
+    if(r.ok){tcState[iface]=conf;
+      const sc=r.split_cfg||{},sn=sc.latency_ms?` (${sc.latency_ms}ms/member)`:'';
+      sb(`sb-${id}`,`✔ Applied to: ${(r.members||[]).join(', ')}${sn}`,'ok');
+      (r.members||[]).forEach(m=>{tcState[m]=sc;setConf(m,sc);
+        sb(`sb-${m.replace(/[^a-z0-9]/gi,'_')}`,`✔ From ${iface}${sn}`,'ok');});}
+    else sb(`sb-${id}`,'✘ '+(r.stderr||'No members?'),'err');
+  }else{
+    if(r.ok){tcState[iface]=conf;sb(`sb-${id}`,'✔ Applied','ok');}
+    else sb(`sb-${id}`,'✘ '+(r.stderr||r.tc_cmd||'Error'),'err');}updateLiveBadge();}
+async function doReset(iface){
+  const id=iface.replace(/[^a-z0-9]/gi,'_');
+  sb(`sb-${id}`,'Resetting…','info');const r=await api(`/api/reset/${iface}`,'POST');
+  if(r.is_bridge){
+    if(r.ok){delete tcState[iface];setConf(iface,{});
+      Object.keys(r.members||{}).forEach(m=>{delete tcState[m];setConf(m,{});
+        sb(`sb-${m.replace(/[^a-z0-9]/gi,'_')}`,'✔ Reset','ok');});
+      sb(`sb-${id}`,'✔ Members reset','ok');}
+    else sb(`sb-${id}`,'✘ Error','err');
+  }else{
+    if(r.ok){delete tcState[iface];setConf(iface,{});sb(`sb-${id}`,'✔ Clean','ok');}
+    else sb(`sb-${id}`,'✘ '+(r.stderr||'Error'),'err');}updateLiveBadge();}
+async function showStats(iface){
+  document.getElementById('m-title').textContent='tc — '+iface;
+  document.getElementById('m-body').textContent='Loading…';
+  document.getElementById('modal').classList.add('show');
+  const r=await api(`/api/stats/${iface}`);
+  document.getElementById('m-body').textContent=r.raw||r.stderr||'Clean — no qdisc';}
+function closeModal(){document.getElementById('modal').classList.remove('show');}
+function openLoadProfile(iface){
+  const names=Object.keys(profiles);if(!names.length){alert('No profiles.');return;}
+  const c=prompt(`Load to ${iface}:\n`+names.map((n,i)=>`${i+1}. ${n}`).join('\n')+'\n\nName:');
+  if(c&&profiles[c]){setConf(iface,profiles[c]);
+    sb(`sb-${iface.replace(/[^a-z0-9]/gi,'_')}`,`📂 "${c}" loaded — click Apply`,'info');}}
+
+// ── VLAN Tab — tree view ───────────────────────────────────────────────────
+function buildVlanTree(physical,vlans,bridgeNames){
+  // Build lookup sets
+  const vlanNames  = new Set(vlans.map(v=>v.name));
+  const bridgeSet  = new Set(bridgeNames||[]);
+  const byParent   = {};
+  vlans.forEach(v=>{(byParent[v.parent]=byParent[v.parent]||[]).push(v);});
+  let rows='';
+
+  // Render physical rows — exclude anything that is a VLAN sub-interface
+  // (those are already shown as children). Bridges are kept but labeled correctly.
+  physical.filter(p=>!vlanNames.has(p.name)).forEach(p=>{
+    const up    = p.state==='up';
+    const isBr  = bridgeSet.has(p.name);
+    const kids  = byParent[p.name]||[];
+    const kidId = `vk-${p.name.replace(/[^a-z0-9]/gi,'_')}`;
+    const toggle = kids.length
+      ? `<button class="toggle-btn" onclick="toggleVlans('${kidId}',this)">▶ ${kids.length} VLAN${kids.length>1?'s':''}</button>` : '';
+    // Type badge
+    const typeTag = isBr
+      ? `<span class="tag tY">Bridge</span>`
+      : `<span class="tag tB">Physical NIC</span>`;
+    rows+=`<tr class="phy-row">
+      <td>${p.name}</td>
+      <td>${typeTag} ${toggle}</td>
+      <td>${up?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>'}</td>
+      <td style="color:var(--muted)">${p.mtu}</td>
+      <td>
+        <button class="bG" style="padding:2px 5px;font-size:.65rem" onclick="doIfUp('${p.name}',true)">▲ Up</button>
+        <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doIfUp('${p.name}',false)">▼ Dn</button>
+      </td></tr>`;
+    // VLAN child rows (hidden by default)
+    kids.forEach(v=>{
+      const vup=v.state==='up';
+      const mb=v.master?`<span class="tag tB">→${v.master}</span>`:'';
+      rows+=`<tr class="vlan-row ${kidId}" style="display:none">
+        <td>${v.name} ${mb}</td>
+        <td><span class="tag tP">Sub-Interface</span> <span class="tag tP" style="opacity:.7">802.1Q ID ${v.vlan_id}</span></td>
+        <td>${vup?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>'}</td>
+        <td style="color:var(--muted)">${v.mtu}</td>
+        <td style="white-space:nowrap">
+          <button class="bG" style="padding:2px 5px;font-size:.65rem" onclick="doVlanUp('${v.name}',true)">▲</button>
+          <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doVlanUp('${v.name}',false)">▼</button>
+          <button class="bY" style="padding:2px 5px;font-size:.65rem" onclick="showVlanStats('${v.name}')">📊</button>
+          <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doDelVlan('${v.name}')">🗑</button>
+        </td></tr>`;
+    });
+  });
+  // Orphan VLANs (parent not found in physical list)
+  vlans.filter(v=>!physical.find(p=>p.name===v.parent)).forEach(v=>{
+    const vup=v.state==='up';
+    rows+=`<tr class="vlan-row" style="background:#1a1010">
+      <td>${v.name} <span class="tag tR">orphan</span></td>
+      <td><span class="tag tP">Sub-Interface</span> VLAN ${v.vlan_id} (parent: ${v.parent})</td>
+      <td>${vup?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>'}</td>
+      <td style="color:var(--muted)">${v.mtu}</td>
+      <td><button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doDelVlan('${v.name}')">🗑</button></td></tr>`;
+  });
+  return rows;
+}
+function toggleVlans(cls,btn){
+  const rows=document.querySelectorAll('.'+cls);
+  const hidden=rows[0]?.style.display==='none';
+  rows.forEach(r=>r.style.display=hidden?'':'none');
+  btn.textContent=hidden?('▼ '+rows.length+' VLAN'+(rows.length>1?'s':''))
+                        :('▶ '+rows.length+' VLAN'+(rows.length>1?'s':''));}
+async function loadVlanTab(){
+  const d=await api('/api/vlans');if(!d||d.ok===false) return;
+  vlanData=d;
+  document.getElementById('phy-tbody').innerHTML=buildVlanTree(d.physical||[],d.vlans||[],d.bridges||[]);
+  const ps=document.getElementById('vl-parent');
+  // Only physical NICs as VLAN parents — exclude bridges and sub-interfaces
+  const vlanNames=new Set((d.vlans||[]).map(v=>v.name));
+  const brNames=new Set(d.bridges||[]);
+  const eligible=(d.physical||[]).filter(p=>
+    !vlanNames.has(p.name) &&   // not itself a VLAN
+    !brNames.has(p.name)   &&   // not a bridge
+    !p.name.includes('.')       // not a sub-interface by name
+  );
+  ps.innerHTML=eligible.length
+    ?eligible.map(p=>`<option>${p.name}</option>`).join('')
+    :'<option disabled>No physical NICs found</option>';}
+async function doCreateVlan(){
+  const parent=document.getElementById('vl-parent').value;
+  const vid=parseInt(document.getElementById('vl-vid').value)||0;
+  const name=document.getElementById('vl-name').value.trim();
+  if(!parent){sb('vl-status','Select parent','err');return;}
+  if(vid<1||vid>4094){sb('vl-status','VLAN ID 1-4094','err');return;}
+  sb('vl-status','Creating…','info');
+  const r=await api('/api/vlans','POST',{parent,vlan_id:vid,name:name||undefined});
+  if(r.ok){
+    sb('vl-status',`✔ Created ${r.name||parent+'.'+vid}`,'ok');
+    document.getElementById('vl-vid').value='';
+    document.getElementById('vl-name').value='';
+    await loadVlanTab();await loadAll();}
+  else sb('vl-status','✘ '+(r.stderr||'Error'),'err');}
+async function doDelVlan(name){
+  if(!confirm(`Delete ${name}?`))return;
+  const r=await api(`/api/vlans/${name}`,'DELETE');
+  if(r.ok){await loadVlanTab();await loadAll();}
+  else alert('Error: '+r.stderr);}
+async function doVlanUp(name,up){
+  await api(`/api/vlans/${name}/up`,'POST',{up}); loadVlanTab();}
+async function doIfUp(name,up){
+  await api(`/api/iface/${name}/up`,'POST',{up}); loadVlanTab();}
+async function showVlanStats(name){
+  document.getElementById('m-title').textContent='Stats — '+name;
+  document.getElementById('m-body').textContent='Loading…';
+  document.getElementById('modal').classList.add('show');
+  const r=await api(`/api/vlans/${name}/stats`);
+  document.getElementById('m-body').textContent=r.raw||r.stderr||'No data';}
+
+// ── Bridge Tab ─────────────────────────────────────────────────────────────
+function renderBrTab(){
+  ['nb-if1','nb-if2'].forEach(sid=>{
+    const sel=document.getElementById(sid),cur=sel.value;
+    sel.innerHTML='<option value="">-- none --</option>';
+    unbridged.forEach(i=>sel.innerHTML+=`<option${i===cur?' selected':''}>${i}</option>`);});
+  const tbody=document.getElementById('br-tbody');const entries=Object.entries(bridges);
+  if(!entries.length){tbody.innerHTML='<tr><td colspan="4" style="color:var(--muted);padding:10px">No bridges</td></tr>';return;}
+  tbody.innerHTML=entries.map(([br,info])=>{
+    const st=info.state==='up'?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>';
+    const mbs=info.members||[];
+    const mbHtml=mbs.map(m=>`<span class="tag tB">${m}</span><button class="bR"
+      style="padding:1px 5px;font-size:.65rem" onclick="doRemoveMember('${br}','${m}')">✕</button>`).join(' ');
+    return`<tr><td style="font-weight:700;color:var(--yellow)">${br}</td>
+      <td>${st}
+        <button class="bG" style="padding:2px 5px;font-size:.65rem;margin-left:4px" onclick="doBrUp('${br}',true)">▲</button>
+        <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doBrUp('${br}',false)">▼</button></td>
+      <td>${mbHtml||'<span style="color:var(--muted)">none</span>'}
+        <button class="bB" style="padding:2px 5px;font-size:.65rem;margin-left:4px" onclick="promptAddMember('${br}')">+</button></td>
+      <td><button class="bY" style="padding:3px 6px;font-size:.7rem" onclick="showBrStats('${br}')">📊</button>
+          <button class="bR" style="padding:3px 6px;font-size:.7rem" onclick="doDelBridge('${br}')">🗑</button></td></tr>`;
+  }).join('');}
+async function doCreateBridge(){
+  const name=document.getElementById('nb-name').value.trim();
+  const if1=document.getElementById('nb-if1').value,if2=document.getElementById('nb-if2').value;
+  const stp=document.getElementById('nb-stp').checked;
+  if(!name){sb('nb-status','Enter name','err');return;}
+  sb('nb-status','Creating…','info');
+  const r=await api(`/api/bridges/${name}`,'POST',{stp});
+  if(!r.ok){sb('nb-status','✘ '+r.stderr,'err');return;}
+  const adds=[];
+  if(if1) adds.push(api(`/api/bridges/${name}/members`,'POST',{iface:if1}));
+  if(if2) adds.push(api(`/api/bridges/${name}/members`,'POST',{iface:if2}));
+  const res=await Promise.all(adds); const failed=res.filter(x=>!x.ok);
+  sb('nb-status',failed.length?`⚠ Bridge ok, member error: ${failed.map(f=>f.stderr).join(';')}`
+                               :`✔ ${name} created`,failed.length?'warn':'ok');
+  await loadAll();}
+async function doDelBridge(name){
+  if(!confirm(`Delete ${name}?`))return;
+  const r=await api(`/api/bridges/${name}`,'DELETE');
+  sb('br-status',r.ok?`✔ ${name} deleted`:'✘ '+(r.stderr||'Error'),r.ok?'ok':'err');await loadAll();}
+async function doBrUp(name,up){
+  await api(`/api/bridges/${name}/up`,'POST',{up}); await loadAll();}
+async function promptAddMember(bridge){
+  const iface=prompt(`Add to ${bridge}\nAvailable: ${unbridged.join(', ')}`);
+  if(!iface)return;
+  const r=await api(`/api/bridges/${bridge}/members`,'POST',{iface});
+  sb('br-status',r.ok?`✔ ${iface}→${bridge}`:'✘ '+r.stderr,r.ok?'ok':'err');await loadAll();}
+async function doRemoveMember(bridge,iface){
+  const r=await api(`/api/bridges/${bridge}/members/${iface}`,'DELETE');
+  sb('br-status',r.ok?`✔ Removed`:'✘ '+r.stderr,r.ok?'ok':'err');await loadAll();}
+async function showBrStats(name){
+  document.getElementById('m-title').textContent='Bridge — '+name;
+  document.getElementById('m-body').textContent='Loading…';
+  document.getElementById('modal').classList.add('show');
+  const r=await api(`/api/bridges/${name}/stats`);
+  document.getElementById('m-body').textContent=r.raw||r.stderr||'No data';}
+
+// ── Profiles ──────────────────────────────────────────────────────────────
+async function renderProfiles(){
+  profiles=await api('/api/profiles');const names=Object.keys(profiles);
+  const chips=document.getElementById('p-chips');
+  chips.innerHTML=names.length?names.map(n=>`<span class="chip" onclick="prevProfile('${n}')">${n}</span>
+    <button class="bR" style="padding:1px 5px;font-size:.65rem" onclick="doDelProfile('${n}')">✕</button>`).join('')
+    :'<span style="color:var(--muted)">No profiles yet</span>';}
+function prevProfile(n){document.getElementById('p-preview').textContent=JSON.stringify(profiles[n],null,2);}
+async function doSaveProfile(){
+  const name=document.getElementById('p-name').value.trim();
+  const iface=document.getElementById('p-iface').value;
+  if(!name){sb('p-status','Enter name','err');return;}
+  const r=await api(`/api/profiles/${name}`,'POST',getConf(iface));
+  r.ok?sb('p-status',`✔ "${name}" saved`,'ok'):sb('p-status','✘ Failed','err');renderProfiles();}
+async function doDelProfile(name){await api(`/api/profiles/${name}`,'DELETE');renderProfiles();}
+
+// ── Settings ──────────────────────────────────────────────────────────────
+// ── Theme ─────────────────────────────────────────────────────────────────
+function applyTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  localStorage.setItem('tc-theme',t);
+  const track=document.getElementById('theme-track');
+  if(track) track.classList.toggle('on',t==='light');}
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')||'dark';
+  applyTheme(cur==='dark'?'light':'dark');}
+// Apply saved theme immediately on load
+applyTheme(localStorage.getItem('tc-theme')||'dark');
+
+async function openSettings(){
+  const r=await api('/api/auth/whoami');
+  document.getElementById('who').textContent=r.username||'?';
+  document.getElementById('who-role').textContent=r.role||'user';
+  ['pw-cur','pw-new','pw-cfm'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  sb('pw-status','','info');
+  // Show timeout section only for admin
+  if(r.role==='admin'){
+    document.getElementById('timeout-section').style.display='block';
+    await loadConfig();
+  }
+  document.getElementById('set-modal').classList.add('show');}
+function closeSettings(){document.getElementById('set-modal').classList.remove('show');}
+async function doChangePw(){
+  const cur=document.getElementById('pw-cur').value;
+  const nw=document.getElementById('pw-new').value;
+  const cfm=document.getElementById('pw-cfm').value;
+  if(nw!==cfm){sb('pw-status','Passwords do not match','err');return;}
+  if(nw.length<8){sb('pw-status','Min 8 characters','err');return;}
+  sb('pw-status','Saving…','info');
+  const r=await api('/api/auth/change-password','POST',{current:cur,new:nw});
+  if(r.ok){sb('pw-status','✔ Password changed!','ok');setTimeout(closeSettings,1500);}
+  else sb('pw-status','✘ '+(r.error||r.stderr||'Error'),'err');}
+async function doSaveTimeout(){
+  const v=parseInt(document.getElementById('timeout-val').value);
+  if(isNaN(v)||v<0){sb('timeout-status','Enter 0 or a positive number','err');return;}
+  const r=await api('/api/config','POST',{idle_timeout_minutes:v});
+  if(r.ok){idleTimeout=v;sb('timeout-status',`✔ Timeout set to ${v===0?'disabled':v+'min'}`,'ok');}
+  else sb('timeout-status','✘ '+(r.error||r.stderr||'Error'),'err');}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function loadAll(){
+  const d=await api('/api/interfaces');if(!d) return;
+  ifaces=d.interfaces||[];bridges=d.bridges||{};ifMeta=d.meta||{};
+  unbridged=d.unbridged||[];tcState=d.state||{};labels=d.labels||{};
+  const brCnt=Object.keys(bridges).length;
+  // Count only real interface-level tc entries:
+  //   exclude bridge keys (their tc is applied to members, not the bridge itself)
+  //   exclude entries where all values are 0 (no actual impairment)
+  document.getElementById('b-if').textContent=`${ifaces.length} iface${ifaces.length!==1?'s':''}`;
+  document.getElementById('b-br').textContent=`${brCnt} bridge${brCnt!==1?'s':''}`;
+  updateLiveBadge();
+  renderTCGrid();
+  const banner=document.getElementById('scan-banner');
+  if(liveCnt>0&&!banner.dataset.shown){
+    banner.style.display='block';
+    banner.textContent=`🔍 Startup: detected tc on ${Object.keys(tcState).join(', ')}`;
+    banner.dataset.shown='1';setTimeout(()=>banner.style.display='none',9000);}
+  const ps=document.getElementById('p-iface');
+  if(ps) ps.innerHTML=ifaces.map(i=>`<option>${i}</option>`).join('');
+  const at=document.querySelector('.tab.active');
+  if(at){if(at.dataset.t==='bridges')renderBrTab();if(at.dataset.t==='vlans')loadVlanTab();}
+  api('/api/profiles').then(p=>{if(p)profiles=p;});
+  return d;}
+
+loadAll();
+loadConfig();
+setInterval(loadAll,20000);
+</script>
+
+<div class="br-drawer-overlay" id="br-drawer-overlay" onclick="closeBrDrawer()"></div>
+<div class="br-drawer" id="br-drawer">
+  <div class="br-drawer-hdr" id="br-drawer-hdr"></div>
+  <div class="br-drawer-body" id="br-drawer-body"></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,11 @@
+[Unit]
+Description=TC Lab v8 SD-WAN Emulator (HTTPS)
+After=network.target
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/tc_lab
+ExecStart=/opt/tc_lab/venv/bin/python /opt/tc_lab/app.py
+Restart=on-failure
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+{
+  "latency_ms": 5,
+  "jitter_ms": 1,
+  "loss_pct": 0,
+  "duplicate_pct": 0,
+  "corrupt_pct": 0,
+  "rate_mbit": 0
+}
