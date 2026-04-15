@@ -142,6 +142,8 @@ tc-lab/
 
 ![TC Interface Manager](https://github.com/user-attachments/assets/80ba48c4-5f8b-4d48-a630-149d0a0579ab)
 
+
+![Design Sample Diagram](https://github.com/user-attachments/assets/f0ad6610-5d49-46e8-9d68-17c4d95112ad)
 ---
 
 ## 🤝 Contributing
