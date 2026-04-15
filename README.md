@@ -129,6 +129,21 @@ tc-lab/
 
 ---
 
+## Screenshots
+
+![TC login](https://github.com/user-attachments/assets/d63dbd0b-c29a-48d1-b8aa-14f37926ef4d)
+
+
+![TC Traffic Emulation Control](https://github.com/user-attachments/assets/d3ba2b8d-0ca2-4216-9d9f-7ce2920ec7c8)
+
+
+![TC Bridge Manager](https://github.com/user-attachments/assets/633ea034-63b9-49b8-a4ef-0a4484ae61bb)
+
+
+![TC Interface Manager](https://github.com/user-attachments/assets/80ba48c4-5f8b-4d48-a630-149d0a0579ab)
+
+---
+
 ## 🤝 Contributing
 
 Pull requests welcome. For major changes, open an issue first.
