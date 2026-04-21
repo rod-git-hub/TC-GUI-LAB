@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = get_or_create_secret()
+app.config['SESSION_COOKIE_NAME'] = 'tcgui_session'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = True
 login_manager.init_app(app)
 app.register_blueprint(auth_bp)
 
