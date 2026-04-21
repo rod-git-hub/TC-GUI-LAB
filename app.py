@@ -295,4 +295,4 @@ if __name__ == "__main__":
     print("[TLS] HTTPS on https://0.0.0.0:5000")
     print("[TLS] To skip Chrome warning: chrome://settings/certificates")
     print("      Authorities -> Import cert.pem -> Trust for HTTPS")
-    app.run(host="0.0.0.0", port=5000, ssl_context=(cert, key), debug=False)
+    app.run(host="0.0.0.0", port=5000, ssl_context=(cert, key), debug=False, threaded=True)
