@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>TC Lab v8</title>
+<title>TC Lab v9.1</title>
 <style>
 :root{
   --bg:#0f1117;--card:#1a1d27;--border:#2a2d3e;--accent:#00d4ff;
@@ -193,12 +193,12 @@ pre{font:13px/1.4 "Courier New",monospace;color:var(--pre-col);white-space:pre-w
 </head>
 <body>
 <header>
-  <h1>⚡ TC Lab v8</h1>
+  <h1>⚡ TC Lab v9.1</h1>
   <span class="badge" id="b-if">– ifaces</span>
   <span class="badge" id="b-br">– bridges</span>
   <span class="badge live" id="b-live" style="display:none">● Live</span>
   <div style="margin-left:auto;display:flex;gap:7px">
-    <button class="bN" style="font-size:.75rem;padding:4px 10px" onclick="loadAll()">↻ Refresh</button>
+    <button class="bN" style="font-size:.75rem;padding:4px 10px" onclick="(async()=>{const b=event.currentTarget;const orig=b.textContent;b.textContent='↻ …';b.disabled=true;await loadAll();b.textContent=orig;b.disabled=false;})()">↻ Refresh</button>
     <button class="bP" style="font-size:.75rem;padding:4px 10px" onclick="openSettings()">⚙ Settings</button>
     <a href="/logout"><button class="bR" style="font-size:.75rem;padding:4px 10px">Logout</button></a>
   </div>
@@ -222,7 +222,7 @@ pre{font:13px/1.4 "Courier New",monospace;color:var(--pre-col);white-space:pre-w
     <div class="card" style="margin-bottom:12px">
       <div class="card-hdr">
         <div class="card-title">🔌 Physical Interfaces &amp; VLAN Sub-interfaces</div>
-        <button class="bB" onclick="loadVlanTab()">↻ Reload</button>
+        <button class="bB" onclick="reloadVlans(event)">↻ Reload</button>
       </div>
       <table class="bt">
         <thead><tr><th>Interface</th><th>Type</th><th>State</th><th>MTU</th><th>Actions</th></tr></thead>
@@ -248,7 +248,7 @@ pre{font:13px/1.4 "Courier New",monospace;color:var(--pre-col);white-space:pre-w
     <div class="card">
       <div class="card-hdr">
         <div class="card-title"><span class="dot dot-br"></span>Active Bridges</div>
-        <button class="bB" onclick="loadAll().then(renderBrTab)">↻ Reload</button>
+        <button class="bB" onclick="reloadBridges(event)">↻ Reload</button>
       </div>
       <table class="bt">
         <thead><tr><th>Bridge</th><th>State</th><th>Members</th><th>Actions</th></tr></thead>
@@ -286,6 +286,34 @@ pre{font:13px/1.4 "Courier New",monospace;color:var(--pre-col);white-space:pre-w
       <div class="card-title" style="margin-bottom:7px">🔍 Preview</div>
       <pre id="p-preview" style="color:var(--muted);font-size:.79rem">Click a chip to preview</pre>
     </div>
+
+  <!-- Export / Import Lab Config -->
+  <div class="card" style="margin-top:11px" id="export-import-card">
+    <div class="card-title" style="margin-bottom:9px">📦 Export / Import Lab Config</div>
+    <p style="color:var(--muted);font-size:.8rem;margin:0 0 12px">
+      Export bundles your entire lab setup into one JSON file: network topology,
+      TC impairments, interface labels and all profiles. Import it on any TC Lab
+      host to instantly recreate the same environment.
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <!-- Export -->
+      <a id="export-btn" href="/api/export"
+         style="background:var(--accent);color:#000;border:none;border-radius:6px;
+                padding:7px 16px;font-size:.8rem;font-weight:700;
+                cursor:pointer;text-decoration:none;display:inline-block">
+        ⬇ Export Config
+      </a>
+      <!-- Import -->
+      <label style="background:#1e3a4f;color:var(--accent);border:1px solid var(--accent);
+                    border-radius:6px;padding:7px 16px;font-size:.8rem;font-weight:700;
+                    cursor:pointer">
+        ⬆ Import Config
+        <input type="file" accept=".json" style="display:none"
+               onchange="doImportConfig(this)">
+      </label>
+    </div>
+    <div id="import-status" class="sb info" style="margin-top:10px;display:none"></div>
+  </div>
   </div>
 </main>
 
@@ -393,8 +421,9 @@ async function loadConfig(){
 // ── API helper ─────────────────────────────────────────────────────────────
 async function api(path,method='GET',body=null){
   try{
-    const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},
-      body:body?JSON.stringify(body):null});
+    const url=method==='GET'?`${path}${path.includes('?')?'&':'?'}_=${Date.now()}`:path;
+    const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},
+      cache:'no-store',body:body?JSON.stringify(body):null});
     if(r.status===401){location.href='/login';return{ok:false};}
     return await r.json();
   }catch(e){return{ok:false,stderr:String(e)};}
@@ -404,9 +433,35 @@ function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===name));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
-  if(name==='bridges') renderBrTab();
+  if(name==='bridges'){api('/api/interfaces').then(d=>{if(!d)return;bridges=d.bridges||{};unbridged=d.unbridged||[];ifMeta=d.meta||{};renderBrTab();});}
   if(name==='profiles') renderProfiles();
   if(name==='vlans') loadVlanTab();
+}
+
+async function reloadBridges(evt){
+  const b=evt.target;  /* capture before any await — currentTarget goes null after async */
+  b.textContent='↻ …';b.disabled=true;
+  const d=await api('/api/interfaces');
+  if(d){bridges=d.bridges||{};unbridged=d.unbridged||[];ifMeta=d.meta||{};ifaces=d.interfaces||[];tcState=d.state||{};}
+  renderBrTab();
+  b.textContent='↻ Reload';b.disabled=false;
+}
+async function reloadVlans(evt){
+  const b=evt.target;  /* capture before any await */
+  b.textContent='↻ …';b.disabled=true;
+  const d=await api('/api/vlans');
+  if(d){
+    vlanData=d;
+    document.getElementById('phy-tbody').innerHTML=buildVlanTree(d.physical||[],d.vlans||[],d.bridges||[]);
+    const ps=document.getElementById('vl-parent');
+    const vlanNames=new Set((d.vlans||[]).map(v=>v.name));
+    const brNames=new Set(d.bridges||[]);
+    const eligible=(d.physical||[]).filter(p=>!vlanNames.has(p.name)&&!brNames.has(p.name)&&!p.name.includes('.'));
+    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${p.name}</option>`).join(''):'<option disabled>No physical NICs found</option>';
+  }
+  const d2=await api('/api/interfaces');
+  if(d2){bridges=d2.bridges||{};unbridged=d2.unbridged||[];ifMeta=d2.meta||{};ifaces=d2.interfaces||[];}
+  b.textContent='↻ Reload';b.disabled=false;
 }
 
 // ── TC Card builder ────────────────────────────────────────────────────────
@@ -705,12 +760,12 @@ async function doCreateVlan(){
     sb('vl-status',`✔ Created ${r.name||parent+'.'+vid}`,'ok');
     document.getElementById('vl-vid').value='';
     document.getElementById('vl-name').value='';
-    await loadVlanTab();await loadAll();}
+    await _refreshVl();}
   else sb('vl-status','✘ '+(r.stderr||'Error'),'err');}
 async function doDelVlan(name){
   if(!confirm(`Delete ${name}?`))return;
   const r=await api(`/api/vlans/${name}`,'DELETE');
-  if(r.ok){await loadVlanTab();await loadAll();}
+  if(r.ok){await _refreshVl();}
   else alert('Error: '+r.stderr);}
 async function doVlanUp(name,up){
   await api(`/api/vlans/${name}/up`,'POST',{up}); loadVlanTab();}
@@ -745,6 +800,17 @@ function renderBrTab(){
       <td><button class="bY" style="padding:3px 6px;font-size:.7rem" onclick="showBrStats('${br}')">📊</button>
           <button class="bR" style="padding:3px 6px;font-size:.7rem" onclick="doDelBridge('${br}')">🗑</button></td></tr>`;
   }).join('');}
+async function _refreshBr(){
+  const d=await api('/api/interfaces');
+  if(d){bridges=d.bridges||{};unbridged=d.unbridged||[];ifMeta=d.meta||{};ifaces=d.interfaces||[];tcState=d.state||{};}
+  renderBrTab();}
+async function _refreshVl(){
+  const d=await api('/api/vlans');
+  if(d){vlanData=d;
+    document.getElementById('phy-tbody').innerHTML=buildVlanTree(d.physical||[],d.vlans||[],d.bridges||[]);
+    const ps=document.getElementById('vl-parent');const vlanNames=new Set((d.vlans||[]).map(v=>v.name));const brNames=new Set(d.bridges||[]);
+    const eligible=(d.physical||[]).filter(p=>!vlanNames.has(p.name)&&!brNames.has(p.name)&&!p.name.includes('.'));
+    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${p.name}</option>`).join(''):'<option disabled>No physical NICs found</option>';}}
 async function doCreateBridge(){
   const name=document.getElementById('nb-name').value.trim();
   const if1=document.getElementById('nb-if1').value,if2=document.getElementById('nb-if2').value;
@@ -759,21 +825,24 @@ async function doCreateBridge(){
   const res=await Promise.all(adds); const failed=res.filter(x=>!x.ok);
   sb('nb-status',failed.length?`⚠ Bridge ok, member error: ${failed.map(f=>f.stderr).join(';')}`
                                :`✔ ${name} created`,failed.length?'warn':'ok');
-  await loadAll();}
+  await _refreshBr();}
 async function doDelBridge(name){
   if(!confirm(`Delete ${name}?`))return;
   const r=await api(`/api/bridges/${name}`,'DELETE');
-  sb('br-status',r.ok?`✔ ${name} deleted`:'✘ '+(r.stderr||'Error'),r.ok?'ok':'err');await loadAll();}
+  sb('br-status',r.ok?`✔ ${name} deleted`:'✘ '+(r.stderr||'Error'),r.ok?'ok':'err');
+  await _refreshBr();}
 async function doBrUp(name,up){
-  await api(`/api/bridges/${name}/up`,'POST',{up}); await loadAll();}
+  await api(`/api/bridges/${name}/up`,'POST',{up});await _refreshBr();}
 async function promptAddMember(bridge){
   const iface=prompt(`Add to ${bridge}\nAvailable: ${unbridged.join(', ')}`);
   if(!iface)return;
   const r=await api(`/api/bridges/${bridge}/members`,'POST',{iface});
-  sb('br-status',r.ok?`✔ ${iface}→${bridge}`:'✘ '+r.stderr,r.ok?'ok':'err');await loadAll();}
+  sb('br-status',r.ok?`✔ ${iface}→${bridge}`:'✘ '+r.stderr,r.ok?'ok':'err');
+  await _refreshBr();}
 async function doRemoveMember(bridge,iface){
   const r=await api(`/api/bridges/${bridge}/members/${iface}`,'DELETE');
-  sb('br-status',r.ok?`✔ Removed`:'✘ '+r.stderr,r.ok?'ok':'err');await loadAll();}
+  sb('br-status',r.ok?`✔ Removed`:'✘ '+r.stderr,r.ok?'ok':'err');
+  await _refreshBr();}
 async function showBrStats(name){
   document.getElementById('m-title').textContent='Bridge — '+name;
   document.getElementById('m-body').textContent='Loading…';
@@ -860,10 +929,41 @@ async function loadAll(){
     banner.dataset.shown='1';setTimeout(()=>banner.style.display='none',9000);}
   const ps=document.getElementById('p-iface');
   if(ps) ps.innerHTML=ifaces.map(i=>`<option>${i}</option>`).join('');
-  const at=document.querySelector('.tab.active');
-  if(at){if(at.dataset.t==='bridges')renderBrTab();if(at.dataset.t==='vlans')loadVlanTab();}
+  renderTCGrid();
+  renderBrTab();
+  loadVlanTab();
   api('/api/profiles').then(p=>{if(p)profiles=p;});
   return d;}
+
+
+// ── Export / Import ───────────────────────────────────────────────────────────
+async function doImportConfig(input){
+  const file = input.files[0];
+  if(!file) return;
+  const st = document.getElementById('import-status');
+  st.style.display=''; st.className='sb info'; st.textContent='Reading file…';
+  try{
+    const text = await file.text();
+    let bundle;
+    try{ bundle = JSON.parse(text); }
+    catch(e){ st.className='sb err'; st.textContent='Invalid JSON: '+e.message; return; }
+
+    st.textContent = `Importing v${bundle.version||'?'} config exported ${bundle.exported||'unknown'}…`;
+    const r = await api('/api/import','POST', bundle);
+    if(r.ok){
+      st.className='sb ok';
+      st.textContent = '✔ Imported: ' + (r.imported||[]).join(', ') +
+                       ' — Reloading UI…';
+      setTimeout(()=>{ loadAll(); st.style.display='none'; }, 1500);
+    } else {
+      st.className='sb err';
+      st.textContent = '✘ ' + (r.stderr||'Import failed');
+    }
+  } catch(e){
+    st.className='sb err'; st.textContent='Error: '+e;
+  }
+  input.value=''; // reset file picker
+}
 
 loadAll();
 loadConfig();
