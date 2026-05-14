@@ -12,8 +12,15 @@ def list_vlan_interfaces():
     try:
         for l in _json.loads(out):
             n = l.get("ifname", ""); f = l.get("flags", [])
-            id_ = l.get("linkinfo", {}).get("info_data", {}).get("id", "?")
-            vlans.append({"name": n, "parent": l.get("link", ""), "vlan_id": id_,
+            id_ = l.get("linkinfo", {}).get("info_data", {}).get("id")
+            # Fallback: parse VLAN ID from interface name (e.g. ens224.111 → 111)
+            if id_ is None and "." in n:
+                try: id_ = int(n.rsplit(".", 1)[-1])
+                except: pass
+            if id_ is None:
+                logger.warning("Cannot determine VLAN ID for %s, skipping", n)
+                continue
+            vlans.append({"name": n, "parent": l.get("link", ""), "vlan_id": int(id_),
                           "proto": l.get("linkinfo", {}).get("info_data", {}).get("protocol", "802.1Q"),
                           "state": "up" if "UP" in f else "down",
                           "master": l.get("master", ""), "mtu": l.get("mtu", "")})

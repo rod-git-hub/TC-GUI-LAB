@@ -1,5 +1,5 @@
-"""app.py v8.1 — fixes: ASCII log strings, HTTP exception handler, port 5000, favicon"""
-import os, json, logging
+"""app.py v9.1"""
+import os, json, logging, subprocess
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, abort
 from flask_login import login_required, current_user
@@ -18,22 +18,20 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = get_or_create_secret()
-app.config['SESSION_COOKIE_NAME'] = 'tcgui_session'
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = True
 login_manager.init_app(app)
 app.register_blueprint(auth_bp)
 
-PROFILES_DIR  = Path("profiles")
-STATE_FILE    = Path("state.json")
-LABELS_FILE   = Path("labels.json")
-CONFIG_FILE   = Path("config.json")
+PROFILES_DIR   = Path("profiles")
+STATE_FILE     = Path("state.json")
+LABELS_FILE    = Path("labels.json")
+CONFIG_FILE    = Path("config.json")
+NET_CONFIG_FILE = Path("network_config.json")   # ← persistence for bridges + VLANs
 PROFILES_DIR.mkdir(exist_ok=True)
 
 VALID          = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
 DEFAULT_CONFIG = {"idle_timeout_minutes": 30}
 
-# ── Error handler: pass HTTP errors (4xx) through cleanly; only log real 5xx ──
+# ── Error handler ──────────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exception(e):
     if isinstance(e, HTTPException):
@@ -41,7 +39,6 @@ def handle_exception(e):
     logger.exception("Unhandled server error: %s", e)
     return jsonify({"ok": False, "stderr": str(e)}), 500
 
-# ── Suppress favicon 404 noise ─────────────────────────────────────────────────
 @app.route("/favicon.ico")
 def favicon():
     return "", 204
@@ -58,18 +55,101 @@ def _save_json(p, data):
     try:    p.write_text(json.dumps(data, indent=2))
     except Exception as e: logger.warning("Save %s: %s", p, e)
 
+# ── Network config persistence ─────────────────────────────────────────────────
+
+def save_net_config():
+    """Snapshot current bridges+members and VLANs to network_config.json."""
+    try:
+        bridges = get_all_bridges()
+        vlans   = list_vlan_interfaces()
+        data = {
+            "bridges": {
+                br: {"members": info.get("members", []), "stp": False}
+                for br, info in bridges.items()
+            },
+            "vlans": [
+                {"name": v["name"], "parent": v["parent"], "vlan_id": v["vlan_id"]}
+                for v in vlans
+            ]
+        }
+        _save_json(NET_CONFIG_FILE, data)
+        logger.info("Network config saved (%d bridges, %d VLANs)",
+                    len(data["bridges"]), len(data["vlans"]))
+    except Exception as e:
+        logger.warning("save_net_config failed: %s", e)
+
+
+def restore_via_script():
+    """Run restore_network.sh to re-create VLANs/bridges/members before tc restore."""
+    # Always use absolute path — works from any CWD (systemd ExecStartPre, app startup, import)
+    install_dir = Path(__file__).parent.resolve()
+    script = install_dir / "restore_network.sh"
+    conf   = install_dir / "network_config.json"
+    if not script.exists():
+        logger.warning("restore_network.sh not found at %s", script)
+        return
+    if not conf.exists():
+        logger.info("No network_config.json — nothing to restore")
+        return
+    logger.info("Running restore_network.sh from %s ...", install_dir)
+    try:
+        r = subprocess.run(
+            ["bash", str(script)],
+            capture_output=True, text=True, timeout=60,
+            cwd=str(install_dir)
+        )
+        for line in r.stdout.splitlines():
+            logger.info("  restore: %s", line)
+        if r.returncode != 0:
+            logger.warning("restore_network.sh exited %d: %s", r.returncode, r.stderr)
+        else:
+            logger.info("restore_network.sh completed OK")
+    except Exception as e:
+        logger.warning("restore_network.sh error: %s", e)
+
+
+def _reapply_tc(saved, bridge_names):
+    """Re-push saved tc rules to kernel after a reboot."""
+    if not saved:
+        return
+    logger.info("Re-applying %d saved tc rule(s)...", len(saved))
+    ok_count = 0
+    for iface, config in saved.items():
+        if iface in bridge_names:
+            continue
+        if not config or not any(float(v) > 0 for v in config.values()):
+            continue
+        try:
+            r = apply_netem(iface, config)
+            if r["ok"]:
+                logger.info("  tc restored: %s %s", iface, config)
+                ok_count += 1
+            else:
+                logger.warning("  tc restore failed: %s — %s", iface, r["stderr"])
+        except Exception as e:
+            logger.warning("  tc restore error: %s — %s", iface, e)
+    logger.info("tc re-apply done: %d/%d succeeded", ok_count,
+                sum(1 for i, c in saved.items()
+                    if i not in bridge_names and any(float(v) > 0 for v in c.values())))
+
+
 def _init():
     global _state, _labels, _config
     ensure_default_user()
     _labels = _load_json(LABELS_FILE)
     _config = {**DEFAULT_CONFIG, **_load_json(CONFIG_FILE)}
-    saved   = _load_json(STATE_FILE)
-    live    = detect_all_tc_configs(list_interfaces())
-    _state  = {**saved, **live}
+    # 1. Restore VLANs + bridges + members via shell script (reliable ordering)
+    restore_via_script()
+    # 2. Load saved tc state
+    saved = _load_json(STATE_FILE)
+    # 3. Re-apply saved tc rules to the kernel
+    bridge_names = set(get_all_bridges().keys())
+    _reapply_tc(saved, bridge_names)
+    # 4. Scan live rules
+    live   = detect_all_tc_configs(list_interfaces())
+    _state = {**saved, **live}
     _save_json(STATE_FILE, _state)
-    if live: logger.info("Detected tc on: %s", list(live.keys()))
-
-_init()
+    if live: logger.info("Live tc detected on: %s", list(live.keys()))
 
 def vname(s, maxlen=20):
     if not s or len(s) > maxlen or not all(c in VALID for c in s.lower()):
@@ -193,11 +273,16 @@ def api_bridges(): return jsonify(get_all_bridges())
 @login_required
 def api_create_bridge(name):
     data = request.get_json(force=True) or {}
-    return jsonify(create_bridge(vname(name), bool(data.get("stp", False))))
+    r = create_bridge(vname(name), bool(data.get("stp", False)))
+    if r["ok"]: save_net_config()          # ← persist
+    return jsonify(r)
 
 @app.route("/api/bridges/<name>", methods=["DELETE"])
 @login_required
-def api_delete_bridge(name): return jsonify(delete_bridge(vname(name)))
+def api_delete_bridge(name):
+    r = delete_bridge(vname(name))
+    if r["ok"]: save_net_config()          # ← persist
+    return jsonify(r)
 
 @app.route("/api/bridges/<name>/up", methods=["POST"])
 @login_required
@@ -209,12 +294,17 @@ def api_bridge_updown(name):
 @login_required
 def api_add_member(name):
     data = request.get_json(force=True) or {}
-    return jsonify(add_member(vname(name), vname(data.get("iface", ""))))
+    r = add_member(vname(name), vname(data.get("iface", "")))
+    if r["ok"]: save_net_config()          # ← persist
+    return jsonify(r)
 
 @app.route("/api/bridges/<name>/members/<iface>", methods=["DELETE"])
 @login_required
 def api_remove_member(name, iface):
-    vname(name); return jsonify(remove_member(vname(iface)))
+    vname(name)
+    r = remove_member(vname(iface))
+    if r["ok"]: save_net_config()          # ← persist
+    return jsonify(r)
 
 @app.route("/api/bridges/<name>/stats")
 @login_required
@@ -241,11 +331,16 @@ def api_create_vlan():
         safe = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
         if not all(c in safe for c in name.lower()) or len(name) > 20:
             return jsonify({"ok": False, "stderr": "Invalid name"}), 400
-    return jsonify(create_vlan(parent, int(vid_raw), name or None))
+    r = create_vlan(parent, int(vid_raw), name or None)
+    if r["ok"]: save_net_config()          # ← persist
+    return jsonify(r)
 
 @app.route("/api/vlans/<name>", methods=["DELETE"])
 @login_required
-def api_delete_vlan(name): return jsonify(delete_vlan(vname(name)))
+def api_delete_vlan(name):
+    r = delete_vlan(vname(name))
+    if r["ok"]: save_net_config()          # ← persist
+    return jsonify(r)
 
 @app.route("/api/vlans/<name>/up", methods=["POST"])
 @login_required
@@ -289,8 +384,83 @@ def api_delete_profile(name):
     if p.exists(): p.unlink()
     return jsonify({"ok": True})
 
+
+# ── Export / Import ────────────────────────────────────────────────────────────
+@app.route("/api/export")
+@login_required
+def api_export():
+    """Bundle network config, tc state, labels and profiles into one JSON."""
+    from datetime import datetime
+    profiles = {}
+    for f in PROFILES_DIR.glob("*.json"):
+        try: profiles[f.stem] = json.loads(f.read_text())
+        except: pass
+    bundle = {
+        "version":  "9.1",
+        "exported": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "network":  _load_json(NET_CONFIG_FILE),
+        "tc_state": _load_json(STATE_FILE),
+        "labels":   _load_json(LABELS_FILE),
+        "profiles": profiles
+    }
+    from flask import Response
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    return Response(
+        json.dumps(bundle, indent=2),
+        mimetype="application/json",
+        headers={"Content-Disposition": f"attachment; filename=tc_lab_config_{ts}.json"}
+    )
+
+@app.route("/api/import", methods=["POST"])
+@login_required
+@admin_required
+def api_import():
+    """Restore a previously exported config bundle."""
+    global _state, _labels
+    try:
+        bundle = request.get_json(force=True) or {}
+    except Exception as e:
+        return jsonify({"ok": False, "stderr": f"Invalid JSON: {e}"}), 400
+
+    ver = bundle.get("version", "?")
+    imported = []
+
+    # Profiles
+    profs = bundle.get("profiles", {})
+    for name, cfg in profs.items():
+        try:
+            (PROFILES_DIR / f"{name}.json").write_text(json.dumps(cfg, indent=2))
+            imported.append(f"profile:{name}")
+        except Exception as e:
+            logger.warning("Import profile %s: %s", name, e)
+
+    # Labels
+    if "labels" in bundle:
+        _labels = bundle["labels"]
+        _save_json(LABELS_FILE, _labels)
+        imported.append("labels")
+
+    # TC state — save to disk; will be re-applied on next restart
+    if "tc_state" in bundle:
+        _state = bundle["tc_state"]
+        _save_json(STATE_FILE, _state)
+        imported.append("tc_state")
+
+    # Network config — save to disk; apply immediately via restore script
+    if "network" in bundle and bundle["network"]:
+        _save_json(NET_CONFIG_FILE, bundle["network"])
+        imported.append("network_config")
+        # Apply network config immediately (don't wait for reboot)
+        restore_via_script()
+        # Re-apply tc rules right away too
+        bridge_names = set(get_all_bridges().keys())
+        _reapply_tc(_state, bridge_names)
+
+    return jsonify({"ok": True, "version": ver, "imported": imported})
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    _init()
     if os.geteuid() != 0:
         print("[WARNING] Not root -- tc/bridge/vlan/cert commands require root.")
     from ssl_gen import ensure_cert
@@ -298,4 +468,4 @@ if __name__ == "__main__":
     print("[TLS] HTTPS on https://0.0.0.0:5000")
     print("[TLS] To skip Chrome warning: chrome://settings/certificates")
     print("      Authorities -> Import cert.pem -> Trust for HTTPS")
-    app.run(host="0.0.0.0", port=5000, ssl_context=(cert, key), debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=5000, ssl_context=(cert, key), debug=False)

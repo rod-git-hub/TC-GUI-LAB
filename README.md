@@ -36,38 +36,61 @@ interfaces. Built for Fortinet SD-WAN, SASE, and general network lab testing.
 ## 🚀 Quick Start
 
 ```bash
-# 1. Clone
-git clone https://github.com/YOUR_USERNAME/tc-lab.git
+# 1. Clone or download the zip and extract
 cd tc-lab
 
-# 2. Install dependencies
+# 2. Run the installer (requires root)
 sudo bash setup.sh
-
-# 3. Run
-sudo venv/bin/python app.py
 ```
+
+`setup.sh` will:
+- Install all dependencies
+- Copy files to `/opt/tc_lab`
+- Create a Python virtualenv
+- Generate a self-signed TLS cert
+- Install and **start the `tc_lab` systemd service automatically**
 
 Open **https://your-server-ip:5000** in your browser.
 
 > Chrome will warn about the self-signed certificate.
-> Click **Advanced → Proceed** to continue.
+> Click **Advanced → Proceed** to continue, or import `cert.pem` permanently
+> via `chrome://settings/certificates` → Authorities → Import → Trust for HTTPS.
 
 **Default credentials:** `admin` / `tclab123`
 ⚠️ Change your password immediately after first login (Settings → Change Password).
 
 ---
 
+## 🔧 Service Management
+
+```bash
+# Status
+sudo systemctl status tc_lab
+
+# Start / Stop / Restart
+sudo systemctl restart tc_lab
+
+# Logs
+journalctl -u tc_lab -n 100
+
+# Install path
+ls /opt/tc_lab/
+```
+
+---
+
 # Configuration
+
 ## Create an 🔌 SubInterfaces / VLANs
 1.  Physical Interfaces & VLAN Sub-interfaces
     - Make sure your physical interfaces are listed here.
-    - Create your SubInterface and VLANs to be used later by a Bridge. 
+    - Create your SubInterface and VLANs to be used later by a Bridge.
 
 
 ## Create a 🌉 via Bridge Manager
 1.  Using the SubInterfaces created in the 🔌 Interfaces / VLANs
-    - Pair them with a Bridge; that bridge interface will be configured later with your traffic control. 
-    - Optionally, you can bridge whole interfaces if you want. 
+    - Pair them with a Bridge; that bridge interface will be configured later with your traffic control.
+    - Optionally, you can bridge whole interfaces if you want.
 
 
 ## 🎛  Applying TC Impairments
@@ -85,8 +108,6 @@ Open **https://your-server-ip:5000** in your browser.
 
 For bridges: applying to the bridge card splits values across all member
 interfaces. Use "Member controls" to fine-tune individual interfaces.
-
-
 
 ---
 
@@ -122,18 +143,22 @@ See [SECURITY.md](SECURITY.md) for the full security model and known limitations
 ## 🗂 Project Structure
 
 ```
-tc-lab/
+/opt/tc_lab/
 ├── app.py              # Main Flask application
 ├── auth.py             # Authentication (login, users, roles)
 ├── tc_manager.py       # tc/netem interface (apply, reset, scan)
 ├── bridge_manager.py   # Linux bridge management
 ├── vlan_manager.py     # 802.1Q VLAN sub-interface management
 ├── ssl_gen.py          # Self-signed TLS certificate generator
-├── setup.sh            # One-shot dependency installer
-├── bridge_setup.sh     # Helper to create a transparent bridge
+├── restore_helper.py   # Network restore logic (VLANs → bridges → members)
+├── restore_network.sh  # Called by systemd ExecStartPre on every boot
+├── setup.sh            # One-shot installer (deploys to /opt/tc_lab)
 ├── tc_lab.service      # Systemd unit file
 ├── profiles/           # JSON impairment profiles
-└── templates/          # HTML templates (index.html, login.html)
+├── templates/          # HTML templates (index.html, login.html)
+├── network_config.json # Saved bridge/VLAN topology (auto-managed)
+├── state.json          # Saved TC impairment state (auto-managed)
+└── users.json          # Created on first run (bcrypt hashed passwords)
 ```
 
 ---
@@ -163,6 +188,7 @@ tc-lab/
 
 
 ![Design Sample Diagram](https://github.com/user-attachments/assets/f0ad6610-5d49-46e8-9d68-17c4d95112ad)
+
 ---
 
 ## 🤝 Contributing
