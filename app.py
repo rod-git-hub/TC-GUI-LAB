@@ -63,7 +63,7 @@ NET_CONFIG_FILE = STATE_DIR / "network_config.json"   # ← persistence for brid
 PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 
 VALID          = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
-DEFAULT_CONFIG = {"idle_timeout_minutes": 30, "bind_address": "0.0.0.0"}
+DEFAULT_CONFIG = {"idle_timeout_minutes": 30, "bind_address": "0.0.0.0", "port": 5000}
 
 # ── Error handler ──────────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
@@ -613,8 +613,10 @@ if __name__ == "__main__":
     from ssl_gen import ensure_cert
     cert, key = ensure_cert()
     bind = _config.get("bind_address", "0.0.0.0")
-    print(f"[TLS] HTTPS on https://{bind}:5000")
+    try:    port = int(_config.get("port", 5000))
+    except (TypeError, ValueError): port = 5000
+    print(f"[TLS] HTTPS on https://{bind}:{port}")
     print("[TLS] To skip Chrome warning: chrome://settings/certificates")
     print("      Authorities -> Import cert.pem -> Trust for HTTPS")
-    app.run(host=bind, port=5000, ssl_context=(cert, key),
+    app.run(host=bind, port=port, ssl_context=(cert, key),
             debug=False, threaded=True)

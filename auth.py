@@ -30,7 +30,10 @@ class User(UserMixin):
 def _load_users():
     try: return json.loads(USERS_FILE.read_text()) if USERS_FILE.exists() else {}
     except: return {}
-def _save_users(u): USERS_FILE.write_text(json.dumps(u,indent=2))
+def _save_users(u):
+    USERS_FILE.write_text(json.dumps(u,indent=2))
+    try: USERS_FILE.chmod(0o600)          # bcrypt hashes — not world-readable
+    except OSError: pass
 def get_or_create_secret():
     if SECRET_FILE.exists(): return SECRET_FILE.read_text().strip()
     key=secrets.token_hex(32); SECRET_FILE.write_text(key); SECRET_FILE.chmod(0o600); return key
