@@ -179,6 +179,14 @@ def _init():
     ensure_default_user()
     _labels = _load_json(LABELS_FILE)
     _config = {**DEFAULT_CONFIG, **_load_json(CONFIG_FILE)}
+    # Safe mode: come up without recreating topology or re-applying/adopting any
+    # tc rules already on the host. Use when running a second instance (test,
+    # staging) on a box whose interfaces are managed by another process.
+    if os.environ.get("TC_LAB_SKIP_RESTORE"):
+        _state = _load_json(STATE_FILE)
+        logger.warning("TC_LAB_SKIP_RESTORE set — skipping topology restore, "
+                       "tc re-apply and live-scan")
+        return
     # 1. Restore VLANs + bridges + members via shell script (reliable ordering)
     restore_via_script()
     # 2. Load saved tc state

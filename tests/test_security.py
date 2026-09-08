@@ -186,6 +186,18 @@ def test_login_rate_limited(base):
     assert 429 in codes
 
 
+def test_skip_restore_env_prevents_host_mutation(monkeypatch):
+    """TC_LAB_SKIP_RESTORE must stop _init() touching the host's tc/topology."""
+    called = []
+    monkeypatch.setattr(app, "restore_via_script", lambda: called.append("restore"))
+    monkeypatch.setattr(app, "_reapply_tc", lambda *a: called.append("reapply"))
+    monkeypatch.setattr(app, "detect_all_tc_configs", lambda *a: called.append("scan") or {})
+    monkeypatch.setenv("TC_LAB_SKIP_RESTORE", "1")
+    app._init()
+    assert called == []
+    monkeypatch.delenv("TC_LAB_SKIP_RESTORE")
+
+
 def test_open_redirect_blocked():
     assert auth._safe_next("https://evil.example/") is None
     assert auth._safe_next("//evil.example/") is None
