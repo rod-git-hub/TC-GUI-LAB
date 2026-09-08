@@ -1,0 +1,18 @@
+.git
+.gitignore
+*.md
+tests/
+venv/
+.venv/
+__pycache__/
+*.pyc
+# runtime state / secrets — must never enter the image
+state/
+users.json
+secret_key.txt
+cert.pem
+key.pem
+state.json
+network_config.json
+labels.json
+*.log

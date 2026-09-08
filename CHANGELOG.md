@@ -1,3 +1,44 @@
+## [v9.2] - 2026-09-08
+
+### Security
+- **Config import is now validated** (`_sanitize_bundle`). Previously a crafted bundle
+  could write attacker-controlled JSON anywhere the root process could reach (profile
+  names were used as file paths unchecked) — arbitrary file write as root. All names in
+  an imported bundle are now checked against the same rules as the rest of the app, and
+  the whole bundle is rejected on any violation.
+- **Stored XSS fixed** — profile names and every kernel-supplied string are HTML-escaped
+  (`esc()`) before going into the DOM; imported profile names are validated.
+- **Name validation hardened** — a name can no longer start with `-` or `.`, so it can
+  never be read as a `-flag` by `ip`/`tc` (argument injection). `restore_helper.py`
+  re-checks every name too.
+- **CSRF protection** added (Flask-WTF). The SPA sends `X-CSRFToken`; the login form
+  carries a hidden token.
+- **Session/remember cookies** are now `Secure` + `HttpOnly` + `SameSite=Strict`, with a
+  12-hour lifetime. Request bodies are capped at 512 KB.
+- **Security headers** on every response: `X-Frame-Options: DENY`, `nosniff`,
+  `Referrer-Policy`, HSTS, and a Content-Security-Policy.
+- **Login brute-force protection** — `5/min` on `/login`, `10/min` on change-password
+  (Flask-Limiter). Login timing is constant whether or not the username exists, and the
+  post-login redirect can no longer be pointed off-site (open-redirect fix).
+- 500 responses no longer leak the exception string to the client.
+
+### Added
+- **Roles enforced end-to-end.** `admin` creates/deletes/modifies interfaces, bridges
+  and VLANs (and settings/import); `user` changes impairments (apply/reset tc, profiles,
+  labels). The UI hides admin-only controls for `user`; the server returns 403 regardless.
+- **Container deployment** — `Dockerfile` + `docker-compose.yml` running with
+  `--network host`, `cap_drop: ALL` + `NET_ADMIN`/`NET_RAW` only, `no-new-privileges`,
+  read-only rootfs, state on a named volume. `setup.sh`/systemd still supported.
+- `TC_LAB_STATE_DIR` — all writable state (profiles, `*.json`, secret, TLS cert) can be
+  redirected to a mounted volume; defaults to the working directory (no change for
+  existing installs).
+- systemd unit gains sandboxing (`ProtectSystem=full`, `NoNewPrivileges`, `PrivateTmp`, …).
+- `requirements.txt` pinned to exact versions; `requirements-dev.txt` + `tests/`.
+
+### Fixed
+- `loadAll()` referenced an out-of-scope `liveCnt`, throwing mid-startup and skipping the
+  rest of the init sequence.
+
 ## [v9.1] - 2026-05-14
 
 ### Fixed

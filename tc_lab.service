@@ -1,14 +1,35 @@
 [Unit]
 Description=TC Lab WAN Emulator
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/tc_lab
+# State dir defaults to WorkingDirectory. Override to move state onto its own
+# mount (must be writable):
+# Environment=TC_LAB_STATE_DIR=/var/lib/tc_lab
 ExecStartPre=/bin/bash /opt/tc_lab/restore_network.sh
 ExecStart=/opt/tc_lab/venv/bin/python /opt/tc_lab/app.py
 Restart=on-failure
 RestartSec=5
+
+# ── Hardening (kept compatible with a root app that needs tc/ip/modprobe) ──
+# Assumes the /opt/tc_lab install path. For an install elsewhere, change
+# ReadWritePaths (and drop ProtectHome if it lives under /home).
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/opt/tc_lab
+PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+# NOT set: ProtectKernelModules (needs modprobe 8021q),
+#          ProtectKernelTunables (needs to write net.ipv4.ip_forward)
 
 [Install]
 WantedBy=multi-user.target

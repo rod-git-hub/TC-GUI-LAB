@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>TC Lab v9.1</title>
+<meta name="csrf-token" content="{{ csrf_token() }}"/>
+<title>TC Lab v9.2</title>
 <style>
 :root{
   --bg:#0f1117;--card:#1a1d27;--border:#2a2d3e;--accent:#00d4ff;
@@ -189,6 +190,10 @@ pre{font:13px/1.4 "Courier New",monospace;color:var(--pre-col);white-space:pre-w
 .bridge-groups-grid{display:grid;
   grid-template-columns:repeat(auto-fill,minmax(480px,1fr));gap:14px;
   margin-bottom:18px}
+/* Admin-only cards are hidden until whoami confirms the admin role.
+   The server enforces this too (403) — this is just to reduce clutter. */
+.admin-only{display:none}
+body.is-admin .admin-only{display:block}
 </style>
 </head>
 <body>
@@ -229,7 +234,7 @@ pre{font:13px/1.4 "Courier New",monospace;color:var(--pre-col);white-space:pre-w
         <tbody id="phy-tbody"><tr><td colspan="5" style="color:var(--muted)">Loading…</td></tr></tbody>
       </table>
     </div>
-    <div class="card">
+    <div class="card admin-only">
       <div class="card-title" style="margin-bottom:10px">➕ Create 802.1q VLAN Sub-interface</div>
       <div class="r3">
         <div><label>Parent Interface</label><select id="vl-parent"></select></div>
@@ -256,7 +261,7 @@ pre{font:13px/1.4 "Courier New",monospace;color:var(--pre-col);white-space:pre-w
       </table>
       <div id="br-status" class="sb info" style="margin-top:7px"></div>
     </div>
-    <div class="card" style="margin-top:12px">
+    <div class="card admin-only" style="margin-top:12px">
       <div class="card-title" style="margin-bottom:9px">➕ Create Bridge</div>
       <div class="r3">
         <div><label>Name</label><input id="nb-name" type="text" placeholder="br0" value="br0"/></div>
@@ -303,10 +308,10 @@ pre{font:13px/1.4 "Courier New",monospace;color:var(--pre-col);white-space:pre-w
                 cursor:pointer;text-decoration:none;display:inline-block">
         ⬇ Export Config
       </a>
-      <!-- Import -->
-      <label style="background:#1e3a4f;color:var(--accent);border:1px solid var(--accent);
+      <!-- Import (admin only) -->
+      <label id="import-ctl" style="background:#1e3a4f;color:var(--accent);border:1px solid var(--accent);
                     border-radius:6px;padding:7px 16px;font-size:.8rem;font-weight:700;
-                    cursor:pointer">
+                    cursor:pointer;display:none">
         ⬆ Import Config
         <input type="file" accept=".json" style="display:none"
                onchange="doImportConfig(this)">
@@ -419,16 +424,22 @@ async function loadConfig(){
 }
 
 // ── API helper ─────────────────────────────────────────────────────────────
+const CSRF=document.querySelector('meta[name="csrf-token"]')?.content||'';
 async function api(path,method='GET',body=null){
   try{
     const url=method==='GET'?`${path}${path.includes('?')?'&':'?'}_=${Date.now()}`:path;
-    const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},
+    const headers={'Content-Type':'application/json'};
+    if(method!=='GET') headers['X-CSRFToken']=CSRF;
+    const r=await fetch(url,{method,headers,
       cache:'no-store',body:body?JSON.stringify(body):null});
     if(r.status===401){location.href='/login';return{ok:false};}
     return await r.json();
   }catch(e){return{ok:false,stderr:String(e)};}
 }
 function sb(id,msg,cls){const e=document.getElementById(id);if(e){e.textContent=msg;e.className='sb '+cls;}}
+// Escape any value that came from the kernel / another user before it goes into innerHTML.
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>(
+  {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===name));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
@@ -457,7 +468,7 @@ async function reloadVlans(evt){
     const vlanNames=new Set((d.vlans||[]).map(v=>v.name));
     const brNames=new Set(d.bridges||[]);
     const eligible=(d.physical||[]).filter(p=>!vlanNames.has(p.name)&&!brNames.has(p.name)&&!p.name.includes('.'));
-    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${p.name}</option>`).join(''):'<option disabled>No physical NICs found</option>';
+    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';
   }
   const d2=await api('/api/interfaces');
   if(d2){bridges=d2.bridges||{};unbridged=d2.unbridged||[];ifMeta=d2.meta||{};ifaces=d2.interfaces||[];}
@@ -476,7 +487,7 @@ function buildCard(iface){
   let tags='';
   if(isBr){const mbs=(bridges[iface]||{}).members||[];
     tags+=`<span class="tag tY">bridge</span><span class="tag tB">${mbs.length} members</span>`;}
-  if(isMb) tags+=`<span class="tag tB">→${meta.master}</span>`;
+  if(isMb) tags+=`<span class="tag tB">→${esc(meta.master)}</span>`;
   if(!up)  tags+=`<span class="tag tR">down</span>`;
   if(hasTC)tags+=`<span class="tag tG">● tc active</span>`;
   let banner='';
@@ -485,16 +496,16 @@ function buildCard(iface){
     ⚡ Apply splits values across ${n} members (${(150/n).toFixed(0)}ms each for 150ms target RTT).
     </div>`;}
   else if(isMb){banner=`<div class="wbanner" style="background:#001520;border:1px solid var(--accent);color:var(--accent)">
-    Member of <b>${meta.master}</b> — shows split value applied by bridge.</div>`;}
+    Member of <b>${esc(meta.master)}</b> — shows split value applied by bridge.</div>`;}
   return `<div class="card ${isBr?'is-bridge':''} ${isMb?'is-member':''} ${hasTC?'has-tc':''}" id="card-${id}">
   <div class="card-hdr">
-    <div class="card-title"><span class="dot ${dot}"></span>${iface} ${tags}</div>
+    <div class="card-title"><span class="dot ${dot}"></span>${esc(iface)} ${tags}</div>
     <button class="bY" style="padding:3px 7px;font-size:.7rem" onclick="showStats('${iface}')">📊</button>
   </div>
   <div class="label-row">
     <span style="color:var(--muted);font-size:.7rem">📝</span>
     <input class="label-input" id="lbl-${id}" placeholder="Add comment…"
-      value="${lbl.replace(/"/g,'&quot;')}"
+      value="${esc(lbl)}"
       onblur="saveLabel('${iface}')"
       onkeydown="if(event.key==='Enter'){saveLabel('${iface}');this.blur();}"/>
     <button class="label-save" onclick="saveLabel('${iface}')">✓</button>
@@ -529,7 +540,7 @@ function openBrDrawer(br){
   const liveTC=members.some(m=>Object.values(tcState[m]||{}).some(x=>x>0))
     ?'<span class="tag tG">● tc active</span>':'';
   document.getElementById('br-drawer-hdr').innerHTML=`
-    <span style="font-size:1rem;font-weight:700">🌉 ${br}</span>
+    <span style="font-size:1rem;font-weight:700">🌉 ${esc(br)}</span>
     ${st}
     <span class="tag tB">${members.length} member${members.length!==1?'s':''}</span>
     ${liveTC}
@@ -560,6 +571,7 @@ function updateLiveBadge(){
   const lb=document.getElementById('b-live');
   if(liveCnt>0){lb.style.display='';lb.textContent=`● ${liveCnt} tc active`;}
   else lb.style.display='none';
+  return liveCnt;
 }
 
 // ── TC Grid — bridge card in grid + drawer for members ─────────────────────
@@ -582,12 +594,12 @@ function renderTCGrid(){
       const memberChips=members.length
         ?members.map(m=>{
             const hasTC=Object.values(tcState[m]||{}).some(x=>x>0);
-            return `<span class="tag ${hasTC?'tG':'tB'}" style="font-size:.68rem">${m}${hasTC?' ●':''}</span>`;
+            return `<span class="tag ${hasTC?'tG':'tB'}" style="font-size:.68rem">${esc(m)}${hasTC?' ●':''}</span>`;
           }).join('')
         :'<span style="color:var(--muted);font-size:.7rem">no members</span>';
       html+=`<div class="bridge-group">
         <div class="bridge-group-hdr">
-          <span>🌉 ${br}</span> ${brState}
+          <span>🌉 ${esc(br)}</span> ${brState}
           <span class="tag tB">${members.length} member${members.length!==1?'s':''}</span>
           ${liveTC}
           ${members.length?`<button class="br-open-btn" onclick="openBrDrawer('${br}')">⊞ Member controls</button>`:''}
@@ -674,6 +686,7 @@ function buildVlanTree(physical,vlans,bridgeNames){
   const byParent   = {};
   vlans.forEach(v=>{(byParent[v.parent]=byParent[v.parent]||[]).push(v);});
   let rows='';
+  const admin=ROLE==='admin';
 
   // Render physical rows — exclude anything that is a VLAN sub-interface
   // (those are already shown as children). Bridges are kept but labeled correctly.
@@ -689,28 +702,28 @@ function buildVlanTree(physical,vlans,bridgeNames){
       ? `<span class="tag tY">Bridge</span>`
       : `<span class="tag tB">Physical NIC</span>`;
     rows+=`<tr class="phy-row">
-      <td>${p.name}</td>
+      <td>${esc(p.name)}</td>
       <td>${typeTag} ${toggle}</td>
       <td>${up?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>'}</td>
-      <td style="color:var(--muted)">${p.mtu}</td>
-      <td>
+      <td style="color:var(--muted)">${esc(p.mtu)}</td>
+      <td>${admin?`
         <button class="bG" style="padding:2px 5px;font-size:.65rem" onclick="doIfUp('${p.name}',true)">▲ Up</button>
         <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doIfUp('${p.name}',false)">▼ Dn</button>
-      </td></tr>`;
+      `:'<span style="color:var(--muted);font-size:.65rem">—</span>'}</td></tr>`;
     // VLAN child rows (hidden by default)
     kids.forEach(v=>{
       const vup=v.state==='up';
-      const mb=v.master?`<span class="tag tB">→${v.master}</span>`:'';
+      const mb=v.master?`<span class="tag tB">→${esc(v.master)}</span>`:'';
       rows+=`<tr class="vlan-row ${kidId}" style="display:none">
-        <td>${v.name} ${mb}</td>
-        <td><span class="tag tP">Sub-Interface</span> <span class="tag tP" style="opacity:.7">802.1Q ID ${v.vlan_id}</span></td>
+        <td>${esc(v.name)} ${mb}</td>
+        <td><span class="tag tP">Sub-Interface</span> <span class="tag tP" style="opacity:.7">802.1Q ID ${esc(v.vlan_id)}</span></td>
         <td>${vup?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>'}</td>
-        <td style="color:var(--muted)">${v.mtu}</td>
+        <td style="color:var(--muted)">${esc(v.mtu)}</td>
         <td style="white-space:nowrap">
-          <button class="bG" style="padding:2px 5px;font-size:.65rem" onclick="doVlanUp('${v.name}',true)">▲</button>
-          <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doVlanUp('${v.name}',false)">▼</button>
+          ${admin?`<button class="bG" style="padding:2px 5px;font-size:.65rem" onclick="doVlanUp('${v.name}',true)">▲</button>
+          <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doVlanUp('${v.name}',false)">▼</button>`:''}
           <button class="bY" style="padding:2px 5px;font-size:.65rem" onclick="showVlanStats('${v.name}')">📊</button>
-          <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doDelVlan('${v.name}')">🗑</button>
+          ${admin?`<button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doDelVlan('${v.name}')">🗑</button>`:''}
         </td></tr>`;
     });
   });
@@ -718,11 +731,11 @@ function buildVlanTree(physical,vlans,bridgeNames){
   vlans.filter(v=>!physical.find(p=>p.name===v.parent)).forEach(v=>{
     const vup=v.state==='up';
     rows+=`<tr class="vlan-row" style="background:#1a1010">
-      <td>${v.name} <span class="tag tR">orphan</span></td>
-      <td><span class="tag tP">Sub-Interface</span> VLAN ${v.vlan_id} (parent: ${v.parent})</td>
+      <td>${esc(v.name)} <span class="tag tR">orphan</span></td>
+      <td><span class="tag tP">Sub-Interface</span> VLAN ${esc(v.vlan_id)} (parent: ${esc(v.parent)})</td>
       <td>${vup?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>'}</td>
-      <td style="color:var(--muted)">${v.mtu}</td>
-      <td><button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doDelVlan('${v.name}')">🗑</button></td></tr>`;
+      <td style="color:var(--muted)">${esc(v.mtu)}</td>
+      <td>${admin?`<button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doDelVlan('${v.name}')">🗑</button>`:'<span style="color:var(--muted);font-size:.65rem">—</span>'}</td></tr>`;
   });
   return rows;
 }
@@ -746,7 +759,7 @@ async function loadVlanTab(){
     !p.name.includes('.')       // not a sub-interface by name
   );
   ps.innerHTML=eligible.length
-    ?eligible.map(p=>`<option>${p.name}</option>`).join('')
+    ?eligible.map(p=>`<option>${esc(p.name)}</option>`).join('')
     :'<option disabled>No physical NICs found</option>';}
 async function doCreateVlan(){
   const parent=document.getElementById('vl-parent').value;
@@ -783,22 +796,23 @@ function renderBrTab(){
   ['nb-if1','nb-if2'].forEach(sid=>{
     const sel=document.getElementById(sid),cur=sel.value;
     sel.innerHTML='<option value="">-- none --</option>';
-    unbridged.forEach(i=>sel.innerHTML+=`<option${i===cur?' selected':''}>${i}</option>`);});
+    unbridged.forEach(i=>sel.innerHTML+=`<option${i===cur?' selected':''}>${esc(i)}</option>`);});
   const tbody=document.getElementById('br-tbody');const entries=Object.entries(bridges);
   if(!entries.length){tbody.innerHTML='<tr><td colspan="4" style="color:var(--muted);padding:10px">No bridges</td></tr>';return;}
+  const admin=ROLE==='admin';
   tbody.innerHTML=entries.map(([br,info])=>{
     const st=info.state==='up'?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>';
     const mbs=info.members||[];
-    const mbHtml=mbs.map(m=>`<span class="tag tB">${m}</span><button class="bR"
-      style="padding:1px 5px;font-size:.65rem" onclick="doRemoveMember('${br}','${m}')">✕</button>`).join(' ');
-    return`<tr><td style="font-weight:700;color:var(--yellow)">${br}</td>
+    const mbHtml=mbs.map(m=>`<span class="tag tB">${esc(m)}</span>${admin?`<button class="bR"
+      style="padding:1px 5px;font-size:.65rem" onclick="doRemoveMember('${br}','${m}')">✕</button>`:''}`).join(' ');
+    return`<tr><td style="font-weight:700;color:var(--yellow)">${esc(br)}</td>
       <td>${st}
-        <button class="bG" style="padding:2px 5px;font-size:.65rem;margin-left:4px" onclick="doBrUp('${br}',true)">▲</button>
-        <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doBrUp('${br}',false)">▼</button></td>
+        ${admin?`<button class="bG" style="padding:2px 5px;font-size:.65rem;margin-left:4px" onclick="doBrUp('${br}',true)">▲</button>
+        <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doBrUp('${br}',false)">▼</button>`:''}</td>
       <td>${mbHtml||'<span style="color:var(--muted)">none</span>'}
-        <button class="bB" style="padding:2px 5px;font-size:.65rem;margin-left:4px" onclick="promptAddMember('${br}')">+</button></td>
+        ${admin?`<button class="bB" style="padding:2px 5px;font-size:.65rem;margin-left:4px" onclick="promptAddMember('${br}')">+</button>`:''}</td>
       <td><button class="bY" style="padding:3px 6px;font-size:.7rem" onclick="showBrStats('${br}')">📊</button>
-          <button class="bR" style="padding:3px 6px;font-size:.7rem" onclick="doDelBridge('${br}')">🗑</button></td></tr>`;
+          ${admin?`<button class="bR" style="padding:3px 6px;font-size:.7rem" onclick="doDelBridge('${br}')">🗑</button>`:''}</td></tr>`;
   }).join('');}
 async function _refreshBr(){
   const d=await api('/api/interfaces');
@@ -810,7 +824,7 @@ async function _refreshVl(){
     document.getElementById('phy-tbody').innerHTML=buildVlanTree(d.physical||[],d.vlans||[],d.bridges||[]);
     const ps=document.getElementById('vl-parent');const vlanNames=new Set((d.vlans||[]).map(v=>v.name));const brNames=new Set(d.bridges||[]);
     const eligible=(d.physical||[]).filter(p=>!vlanNames.has(p.name)&&!brNames.has(p.name)&&!p.name.includes('.'));
-    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${p.name}</option>`).join(''):'<option disabled>No physical NICs found</option>';}}
+    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';}}
 async function doCreateBridge(){
   const name=document.getElementById('nb-name').value.trim();
   const if1=document.getElementById('nb-if1').value,if2=document.getElementById('nb-if2').value;
@@ -854,7 +868,7 @@ async function showBrStats(name){
 async function renderProfiles(){
   profiles=await api('/api/profiles');const names=Object.keys(profiles);
   const chips=document.getElementById('p-chips');
-  chips.innerHTML=names.length?names.map(n=>`<span class="chip" onclick="prevProfile('${n}')">${n}</span>
+  chips.innerHTML=names.length?names.map(n=>`<span class="chip" onclick="prevProfile('${n}')">${esc(n)}</span>
     <button class="bR" style="padding:1px 5px;font-size:.65rem" onclick="doDelProfile('${n}')">✕</button>`).join('')
     :'<span style="color:var(--muted)">No profiles yet</span>';}
 function prevProfile(n){document.getElementById('p-preview').textContent=JSON.stringify(profiles[n],null,2);}
@@ -920,7 +934,7 @@ async function loadAll(){
   //   exclude entries where all values are 0 (no actual impairment)
   document.getElementById('b-if').textContent=`${ifaces.length} iface${ifaces.length!==1?'s':''}`;
   document.getElementById('b-br').textContent=`${brCnt} bridge${brCnt!==1?'s':''}`;
-  updateLiveBadge();
+  const liveCnt=updateLiveBadge();
   renderTCGrid();
   const banner=document.getElementById('scan-banner');
   if(liveCnt>0&&!banner.dataset.shown){
@@ -928,7 +942,7 @@ async function loadAll(){
     banner.textContent=`🔍 Startup: detected tc on ${Object.keys(tcState).join(', ')}`;
     banner.dataset.shown='1';setTimeout(()=>banner.style.display='none',9000);}
   const ps=document.getElementById('p-iface');
-  if(ps) ps.innerHTML=ifaces.map(i=>`<option>${i}</option>`).join('');
+  if(ps) ps.innerHTML=ifaces.map(i=>`<option>${esc(i)}</option>`).join('');
   renderTCGrid();
   renderBrTab();
   loadVlanTab();
@@ -965,6 +979,20 @@ async function doImportConfig(input){
   input.value=''; // reset file picker
 }
 
+// Role gate — reveal admin-only controls once whoami confirms. Server still
+// enforces (403); this only declutters the UI for the "user" role.
+let ROLE='user';
+async function loadRole(){
+  const r=await api('/api/auth/whoami');
+  ROLE=(r&&r.role)||'user';
+  document.body.classList.toggle('is-admin',ROLE==='admin');
+  const imp=document.getElementById('import-ctl');
+  if(imp) imp.style.display=ROLE==='admin'?'':'none';
+  renderBrTab();      // re-render so admin-only action buttons appear/disappear
+  loadVlanTab();
+}
+
+loadRole();
 loadAll();
 loadConfig();
 setInterval(loadAll,20000);

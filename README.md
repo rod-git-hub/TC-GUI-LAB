@@ -17,9 +17,11 @@ interfaces. Built for Fortinet SD-WAN, SASE, and general network lab testing.
 - **802.1Q VLAN** sub-interface management
 - **Impairment profiles** — save and load presets (satellite, LTE, MPLS, etc.)
 - HTTPS with auto-generated self-signed TLS
+- CSRF protection, hardened session cookies, security headers, login rate-limiting
 - Light / Dark theme
 - Configurable idle session timeout
-- Role-based access (admin / user)
+- Role-based access — **admin** manages interfaces / bridges / VLANs, **user** changes impairments
+- Runs under systemd **or** as a hardened container
 
 ---
 
@@ -44,13 +46,16 @@ sudo bash setup.sh
 ```
 
 `setup.sh` will:
-- Install all dependencies
+- Install all dependencies (`requirements.txt`)
 - Copy files to `/opt/tc_lab`
 - Create a Python virtualenv
 - Generate a self-signed TLS cert
 - Install and **start the `tc_lab` systemd service automatically**
 
 Open **https://your-server-ip:5000** in your browser.
+
+> Prefer containers? See [Run as a container](#-run-as-a-container-alternative-to-systemd) below.
+> Running the tests: `pip install -r requirements-dev.txt && python -m pytest -q`
 
 > Chrome will warn about the self-signed certificate.
 > Click **Advanced → Proceed** to continue, or import `cert.pem` permanently
@@ -76,6 +81,37 @@ journalctl -u tc_lab -n 100
 # Install path
 ls /opt/tc_lab/
 ```
+
+---
+
+## 🐳 Run as a container (alternative to systemd)
+
+The app has to manage the **host's** real interfaces, so the container shares the host
+network namespace — but runs with only `NET_ADMIN`/`NET_RAW`, `no-new-privileges`, and a
+read-only root filesystem instead of as unconfined host root.
+
+**Host prerequisites** (the container can't load kernel modules itself under host networking):
+
+```bash
+sudo cp modules-load.d/tc-lab.conf /etc/modules-load.d/
+sudo modprobe 8021q sch_netem br_netfilter
+echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward      # for bridged / routed labs
+```
+
+**Start:**
+
+```bash
+docker compose up -d --build
+```
+
+Open **https://your-host-ip:5000** (same default login). State (users, TLS cert, profiles,
+topology) lives in the `tc-lab-state` volume and survives `docker compose down`.
+
+| | systemd | Container |
+|---|---|---|
+| Manages host interfaces | yes | yes (`--network host`) |
+| Privileges | unconfined root | root limited to `NET_ADMIN` + `NET_RAW` |
+| Filesystem | read-write | read-only + state volume |
 
 ---
 
@@ -131,10 +167,13 @@ interfaces. Use "Member controls" to fine-tune individual interfaces.
 > **This tool runs as root. Do NOT expose port 5000 to the public internet.**
 > Intended for **isolated lab environments only.**
 
-- Passwords are bcrypt-hashed
-- Transport is TLS-encrypted (self-signed cert)
+- Passwords are bcrypt-hashed; login is rate-limited
+- Transport is TLS-encrypted (self-signed cert); cookies are `Secure` + `SameSite=Strict`
+- CSRF tokens on every state-changing request; security headers + CSP on every response
+- Config-import bundles are fully validated before anything is written or replayed
 - Change the default password immediately
-- Firewall port 5000 to management workstations only
+- Bind to your management IP (`bind_address` in `config.json`) and firewall port 5000
+- Prefer the container deployment — it drops all capabilities except `NET_ADMIN`/`NET_RAW`
 
 See [SECURITY.md](SECURITY.md) for the full security model and known limitations.
 
@@ -143,22 +182,30 @@ See [SECURITY.md](SECURITY.md) for the full security model and known limitations
 ## 🗂 Project Structure
 
 ```
-/opt/tc_lab/
-├── app.py              # Main Flask application
-├── auth.py             # Authentication (login, users, roles)
+tc-lab/
+├── app.py              # Main Flask application (routes, validation, CSRF, headers)
+├── auth.py             # Auth: login, users, roles, rate-limiter, decorators
 ├── tc_manager.py       # tc/netem interface (apply, reset, scan)
 ├── bridge_manager.py   # Linux bridge management
 ├── vlan_manager.py     # 802.1Q VLAN sub-interface management
 ├── ssl_gen.py          # Self-signed TLS certificate generator
 ├── restore_helper.py   # Network restore logic (VLANs → bridges → members)
-├── restore_network.sh  # Called by systemd ExecStartPre on every boot
-├── setup.sh            # One-shot installer (deploys to /opt/tc_lab)
-├── tc_lab.service      # Systemd unit file
-├── profiles/           # JSON impairment profiles
+├── restore_network.sh  # Called by systemd ExecStartPre / container entrypoint
+├── setup.sh            # systemd installer (deploys to /opt/tc_lab)
+├── tc_lab.service      # systemd unit (sandboxed)
+├── Dockerfile          # Container image
+├── docker-compose.yml  # Hardened container deployment
+├── entrypoint.sh       # Container entrypoint (restore + run)
+├── requirements.txt    # Pinned runtime deps  (requirements-dev.txt adds pytest)
+├── profiles/           # Default JSON impairment profiles (seed data)
 ├── templates/          # HTML templates (index.html, login.html)
-├── network_config.json # Saved bridge/VLAN topology (auto-managed)
-├── state.json          # Saved TC impairment state (auto-managed)
-└── users.json          # Created on first run (bcrypt hashed passwords)
+├── tests/              # pytest security regression suite
+└── <STATE_DIR>/        # Writable state — defaults to the app dir; set
+    ├── network_config.json #   TC_LAB_STATE_DIR to move onto a volume.
+    ├── state.json          #   Auto-managed. Never commit these.
+    ├── users.json          #   bcrypt hashes, created on first run
+    ├── secret_key.txt      #   Flask session key
+    └── cert.pem / key.pem  #   self-signed TLS
 ```
 
 ---

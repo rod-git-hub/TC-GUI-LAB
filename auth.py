@@ -1,15 +1,30 @@
-"""auth.py v7"""
-import json,logging,secrets
+"""auth.py v8"""
+import json,logging,os,secrets
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlparse
 from flask import Blueprint,request,redirect,url_for,render_template,flash,jsonify
 from flask_login import (LoginManager,UserMixin,login_user,logout_user,login_required,current_user)
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import bcrypt
-USERS_FILE=Path("users.json"); SECRET_FILE=Path("secret_key.txt")
+_SD=Path(os.environ.get("TC_LAB_STATE_DIR","."))
+_SD.mkdir(parents=True,exist_ok=True)
+USERS_FILE=_SD/"users.json"; SECRET_FILE=_SD/"secret_key.txt"
 logger=logging.getLogger(__name__)
 login_manager=LoginManager()
 login_manager.login_view="auth.login"
 login_manager.login_message=""
+limiter=Limiter(key_func=get_remote_address, default_limits=[], storage_uri="memory://")
+# Fixed-cost hash so a login attempt takes the same time whether or not the
+# username exists (defeats user enumeration by timing).
+_DUMMY_HASH=bcrypt.hashpw(b"x",bcrypt.gensalt(rounds=12)).decode()
+
+def _safe_next(target):
+    """Only allow same-host relative redirects after login (no open redirect)."""
+    if not target: return None
+    u=urlparse(target)
+    return target if (not u.scheme and not u.netloc and target.startswith("/")) else None
 class User(UserMixin):
     def __init__(self,username,role="user"): self.id=username; self.role=role
 def _load_users():
@@ -34,6 +49,17 @@ def admin_required(f):
             return jsonify({"ok":False,"error":"Admin required"}),403
         return f(*a,**kw)
     return d
+
+def role_required(*roles):
+    """Allow the route only for the listed roles (e.g. @role_required("admin","user"))."""
+    def wrap(f):
+        @wraps(f)
+        def d(*a,**kw):
+            if not current_user.is_authenticated or current_user.role not in roles:
+                return jsonify({"ok":False,"error":"Insufficient role"}),403
+            return f(*a,**kw)
+        return d
+    return wrap
 @login_manager.user_loader
 def load_user(username):
     u=_load_users()
@@ -41,15 +67,18 @@ def load_user(username):
     return None
 auth_bp=Blueprint("auth",__name__)
 @auth_bp.route("/login",methods=["GET","POST"])
+@limiter.limit("5 per minute",methods=["POST"])
 def login():
     if request.method=="POST":
         username=request.form.get("username","").strip()
         password=request.form.get("password","").encode()
         users=_load_users()
-        if username in users and bcrypt.checkpw(password,users[username]["hash"].encode()):
-            login_user(User(username,users[username].get("role","user")),
+        rec=users.get(username)
+        hash_to_check=(rec["hash"] if rec else _DUMMY_HASH).encode()
+        if bcrypt.checkpw(password,hash_to_check) and rec:
+            login_user(User(username,rec.get("role","user")),
                        remember=bool(request.form.get("remember")))
-            return redirect(request.args.get("next") or url_for("index"))
+            return redirect(_safe_next(request.args.get("next")) or url_for("index"))
         flash("Invalid username or password")
     return render_template("login.html")
 @auth_bp.route("/logout")
@@ -58,13 +87,17 @@ def logout():
     logout_user(); return redirect(url_for("auth.login"))
 @auth_bp.route("/api/auth/change-password",methods=["POST"])
 @login_required
+@limiter.limit("10 per minute")
 def change_password():
-    data=request.get_json(force=True) or {}
+    data=request.get_json(silent=True) or {}
     cur=data.get("current","").encode(); new_pw=data.get("new","").encode()
     if len(new_pw)<8: return jsonify({"ok":False,"error":"Min 8 characters"})
     users=_load_users(); username=current_user.id
-    if not bcrypt.checkpw(cur,users[username]["hash"].encode()):
+    rec=users.get(username)
+    if not rec or not bcrypt.checkpw(cur,rec["hash"].encode()):
         return jsonify({"ok":False,"error":"Current password incorrect"})
+    if bcrypt.checkpw(new_pw,rec["hash"].encode()):
+        return jsonify({"ok":False,"error":"New password must differ from current"})
     users[username]["hash"]=bcrypt.hashpw(new_pw,bcrypt.gensalt(rounds=12)).decode()
     _save_users(users); return jsonify({"ok":True})
 @auth_bp.route("/api/auth/whoami")

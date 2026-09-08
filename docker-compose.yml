@@ -1,0 +1,37 @@
+# TC Lab — hardened container deployment.
+#
+# The app must manage the HOST's real interfaces, so it shares the host network
+# namespace. Everything else is locked down: only NET_ADMIN + NET_RAW, no new
+# privileges, read-only root filesystem, state on a named volume.
+#
+# Host prerequisites (host networking = the container cannot load modules itself):
+#   sudo modprobe 8021q sch_netem br_netfilter      # or use modules-load.d/tc-lab.conf
+#   echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward # for bridged/routed labs
+#
+# Then:  docker compose up -d   →   https://<host-ip>:5000   (admin / tclab123)
+
+services:
+  tc-lab:
+    build: .
+    image: tc-lab:latest
+    container_name: tc-lab
+    network_mode: host
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN          # tc qdisc / ip link / bridge
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      TC_LAB_STATE_DIR: /opt/tc_lab/state
+    volumes:
+      - tc-lab-state:/opt/tc_lab/state
+      - /lib/modules:/lib/modules:ro
+    restart: unless-stopped
+
+volumes:
+  tc-lab-state:

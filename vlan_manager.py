@@ -84,7 +84,10 @@ def create_vlan(parent, vlan_id, name=""):
     _run(["ip", "link", "set", parent, "up"])
     rc, _, err = _run(["ip", "link", "add", "link", parent,
                         "name", name, "type", "vlan", "id", str(vlan_id)])
-    if rc != 0: return {"ok": False, "stderr": err}
+    if rc != 0:
+        if "not supported" in err.lower():
+            err += "  (is the 8021q kernel module loaded on the host?)"
+        return {"ok": False, "stderr": err}
     rc2, _, err2 = _run(["ip", "link", "set", name, "up"])
     return {"ok": rc2 == 0, "stderr": err2, "name": name}
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>TC Lab v8 — Login</title>
+<title>TC Lab v9.2 — Login</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0f1117;color:#e0e0e0;font-family:"Segoe UI",system-ui,sans-serif;
@@ -29,12 +29,14 @@ button:hover{opacity:.88}
 <body>
 <div class="box">
   <div class="logo">⚡</div>
-  <h2>TC Lab v8</h2>
+  <h2>TC Lab v9.2</h2>
   <div class="tls">🔒 TLS Encrypted</div>
   {% with messages = get_flashed_messages() %}
     {% if messages %}{% for m in messages %}<div class="err">{{ m }}</div>{% endfor %}{% endif %}
   {% endwith %}
+  {% if rate_limited %}<div class="err">Too many login attempts — wait a minute and try again.</div>{% endif %}
   <form method="POST" autocomplete="on">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <label>Username</label>
     <input type="text" name="username" autofocus autocomplete="username"/>
     <label>Password</label>

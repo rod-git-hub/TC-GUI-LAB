@@ -1,0 +1,29 @@
+# ── Runtime state & secrets (created on first run — never commit) ──
+users.json
+secret_key.txt
+cert.pem
+key.pem
+state.json
+network_config.json
+labels.json
+restore_network.log
+
+# Local state dir (container / STATE_DIR deployments)
+/state/
+
+# Impairment profiles are shipped defaults; ignore only runtime-added ones?
+# (kept tracked — see profiles/)
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# ── Editor / OS ──
+.vscode/
+.idea/
+*.swp
+.DS_Store

@@ -17,7 +17,7 @@ rsync -a --exclude=venv --exclude=__pycache__ --exclude='*.pyc' \
 
 # 3. Virtualenv
 python3 -m venv "${INSTALL_DIR}/venv"
-"${INSTALL_DIR}/venv/bin/pip" install --quiet flask flask-login bcrypt cryptography
+"${INSTALL_DIR}/venv/bin/pip" install --quiet -r "${INSTALL_DIR}/requirements.txt"
 
 # 4. Generate TLS cert if missing
 if [ ! -f "${INSTALL_DIR}/cert.pem" ]; then
