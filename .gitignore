@@ -31,3 +31,6 @@ venv/
 
 # UI design preview (tools/ui-preview.py)
 _preview.html
+
+# AI assistant guidance — local working file, not shipped
+CLAUDE.md

@@ -222,12 +222,13 @@ tc-lab/
 ├── requirements.txt    # Pinned runtime deps  (requirements-dev.txt adds pytest)
 ├── profiles/           # Default JSON impairment profiles (seed data)
 ├── templates/          # HTML templates (index.html, login.html)
-├── tools/ui-preview.py # Render the UI against a fixture, no backend needed
-├── docs/               # deployment, users & security, upgrade guides
-├── tests/              # pytest security regression suite
+├── tools/              # ui-preview.py, capture-screenshots.py (dev helpers)
+├── docs/               # deployment, upgrading, users & security, screenshots
+├── tests/              # pytest suite (security + user management)
 └── <STATE_DIR>/        # Writable state — defaults to the app dir; set
-    ├── network_config.json #   TC_LAB_STATE_DIR to move onto a volume.
-    ├── state.json          #   Auto-managed. Never commit these.
+    ├── config.json         #   TC_LAB_STATE_DIR to move onto a volume.
+    ├── network_config.json #   All auto-managed. Never commit these.
+    ├── state.json          #   Saved impairments, replayed on boot
     ├── users.json          #   bcrypt hashes, created on first run
     ├── secret_key.txt      #   Flask session key
     └── cert.pem / key.pem  #   self-signed TLS

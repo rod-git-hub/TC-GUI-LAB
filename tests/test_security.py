@@ -28,7 +28,7 @@ def test_name_ok_rejects(bad):
     assert app._name_ok(bad) is False
 
 
-@pytest.mark.parametrize("ok", ["eth0", "br-wan", "ens224.111", "a", "x_1", "A0", "a.b-c_d"])
+@pytest.mark.parametrize("ok", ["eth0", "br-wan", "eth1.100", "a", "x_1", "A0", "a.b-c_d"])
 def test_name_ok_accepts(ok):
     assert app._name_ok(ok) is True
 
