@@ -13,18 +13,24 @@ around it rather than discover it.
 | Local accounts, multiple users | ✅ supported |
 | bcrypt password hashing (cost 12) | ✅ supported |
 | Two roles: `admin`, `user`, enforced server-side | ✅ supported |
+| **Admin creates / deletes accounts from the dashboard** | ✅ supported |
+| **Admin resets any user's password from the dashboard** | ✅ supported |
+| **CLI admin password recovery (`tc-lab reset-admin-password`)** | ✅ supported |
 | Self-service password change | ✅ supported |
 | Session cookies: `Secure`, `HttpOnly`, `SameSite=Strict` | ✅ supported |
 | CSRF protection on every state-changing request | ✅ supported |
 | Login rate limiting (5/min) | ✅ supported |
 | Idle session timeout | ✅ supported |
 | HTTPS with auto-generated certificate | ✅ supported |
-| **Web UI to create/delete users** | ❌ edit `users.json` by hand |
-| **Self-service password reset ("forgot password")** | ❌ admin intervention |
+| **Self-service password reset ("forgot my password")** | ❌ by design — ask an admin, or use the CLI |
 | **LDAP / Active Directory / SAML / OAuth / SSO** | ❌ requires development |
 | **Multi-factor authentication** | ❌ requires development |
 | **Account lockout, password complexity policy** | ❌ requires development |
 | **Audit log of who changed what** | ❌ partial (see §8) |
+
+**The model in one line:** local JSON user store → local application accounts →
+admin manages users from the dashboard → Linux CLI recovers the admin account if
+its password is lost. No database, no external identity provider.
 
 ---
 
@@ -96,54 +102,83 @@ Two related hardening details in v9.2:
 
 ## 4. Managing users
 
-### Change your own password — supported in the UI
+### As an admin — dashboard → **Users**
 
-Settings (gear icon) → **Change Password**. Requires the current password;
-minimum 8 characters; the new password must differ from the old one.
+The **Users** section appears in the sidebar for admins only. A `user` role never
+sees it, and every route behind it returns HTTP 403 for them regardless of what
+the browser sends.
 
-### Add a user — manual, requires root
+| Task | How |
+|---|---|
+| **Create an account** | Users → Create Account: username, password, role |
+| **Reset someone's password** | Users → the account's **Reset password** button |
+| **Change someone's role** | Users → the role dropdown on their row |
+| **Delete an account** | Users → the trash button on their row |
 
-There is no user-management UI. Generate a hash and add an entry:
+The password is set directly — an admin never needs (and can never see) the
+user's existing password. Tell the person their new password over a trusted
+channel; the dashboard will not show it again.
+
+Guard rails, enforced server-side so the UI cannot be bypassed:
+
+- You cannot delete your own account.
+- You cannot remove your own admin role.
+- You cannot delete or demote the **last** admin — the system can never be left
+  with no way in.
+- Usernames are validated (1–20 chars of `a-z 0-9 . _ -`, starting with a letter
+  or digit), so a name can never be read as a path or a command flag.
+
+Role changes take effect on the user's very next request — no restart needed.
+
+### As any user — change your own password
+
+Settings (gear icon) → **Change Password**. Requires your current password, a
+minimum of 8 characters, and the new password must differ from the old one.
+
+### If the admin password is lost — CLI recovery
+
+Requires shell access and root on the host. It **resets** the admin password —
+there is deliberately no command that reads or displays an existing password,
+because only a one-way hash is stored.
 
 ```bash
-cd /opt/tc_lab
-# 1. generate a bcrypt hash (you will be prompted; input is not echoed)
-sudo venv/bin/python -c "import bcrypt,getpass; \
-print(bcrypt.hashpw(getpass.getpass('New password: ').encode(), bcrypt.gensalt(12)).decode())"
-
-# 2. add the account
-sudo nano users.json          # add a "username": {"hash": "...", "role": "user"} entry
-sudo chmod 600 users.json
-sudo systemctl restart tc_lab
+sudo tc-lab reset-admin-password
 ```
 
-Roles are read fresh on every request, so a role change takes effect on the
-user's next action — no restart needed for that.
+It will:
 
-### Delete a user
+1. Verify it is running as root (exit code 2 if not).
+2. Prompt twice for the new password, **without echoing it**.
+3. Validate it against the same policy the dashboard uses.
+4. Write a backup of the account store (`users.json.bak`, mode `0600`).
+5. Update **only** the `admin` account's hash — every other account, role and
+   application setting is left exactly as it was.
+6. Read the file back and verify the new password before reporting success.
 
-Remove their object from `users.json`. They are signed out on their next request.
+If the `admin` account has been deleted entirely, the command recreates it with
+the admin role and preserves all other accounts.
 
-### Reset a forgotten password
-
-Two options, both requiring root on the host:
+Related:
 
 ```bash
-# A. set a new hash for that one user — follow "Add a user" above and replace
-#    the existing "hash" value.
-
-# B. nuclear: reset everything to the default admin account
-sudo systemctl stop tc_lab
-sudo rm /opt/tc_lab/users.json
-sudo systemctl start tc_lab      # recreates admin / tclab123
+sudo tc-lab list-users        # usernames and roles — never hashes
+sudo tc-lab --help
 ```
 
-Option B deletes **all** accounts.
+Under a non-standard install path, point the wrapper at it:
 
-> **Requires development:** a user-management page, an admin-initiated password
-> reset, and a "forgot password" flow. All three are straightforward additions on
-> top of the existing `auth.py` — the storage format already supports multiple
-> users and roles; only the UI and routes are missing.
+```bash
+sudo TC_LAB_DIR=/srv/tc_lab tc-lab reset-admin-password
+```
+
+Or run the module directly:
+
+```bash
+cd /opt/tc_lab && sudo venv/bin/python cli.py reset-admin-password
+```
+
+> **Last resort** (loses every account): stop the service, delete `users.json`,
+> start it again — the default `admin` / `tclab123` is recreated. Prefer the CLI.
 
 ---
 
@@ -155,6 +190,7 @@ regardless of what the browser sends.
 
 | Action | `admin` | `user` |
 |---|:---:|:---:|
+| **Create / delete accounts, reset others' passwords, change roles** | ✅ | ❌ |
 | View interfaces, bridges, VLANs, statistics | ✅ | ✅ |
 | Apply / reset impairments (`tc`) | ✅ | ✅ |
 | Save, load and delete profiles | ✅ | ✅ |
@@ -168,8 +204,14 @@ regardless of what the browser sends.
 | **Import** lab config | ✅ | ❌ |
 
 The split is deliberate: `user` can run experiments — change impairments all day
-— but cannot alter the lab's physical topology or import a configuration bundle.
-Give day-to-day operators `user` and keep `admin` for whoever owns the rig.
+— but cannot alter the lab's physical topology, import a configuration bundle, or
+touch accounts. Give day-to-day operators `user` and keep `admin` for whoever
+owns the rig.
+
+Note the asymmetry on passwords: a `user` can change **their own** password (the
+route reads the username from the session, never from the request body, so it
+cannot be pointed at someone else's account) but only an `admin` can reset
+**another** user's.
 
 > **Requires development:** more granular authorization (e.g. per-interface
 > permissions, a read-only role, or an approval workflow). The `role_required()`
@@ -217,7 +259,8 @@ root shell access on that host.
 4. **Use the container deployment** where you can — it bounds the process to
    `CAP_NET_ADMIN` + `CAP_NET_RAW` on a read-only filesystem, instead of
    unconfined root.
-5. **Give operators the `user` role**, not `admin`.
+5. **Give operators the `user` role**, not `admin`. Create their accounts from
+   Users → Create Account; keep the number of admins small.
 6. **Trust the certificate** rather than clicking through the warning every time:
    import `cert.pem` into your browser's authority store. Or drop in a real
    cert — replace `cert.pem` / `key.pem` and restart.
@@ -240,7 +283,7 @@ Honest accounting of what this tool does *not* do.
 | Runs as root | a compromise means host control | container deployment; isolated lab network |
 | Werkzeug's built-in server | not built for hostile networks | fine for a single operator on a trusted LAN; put a reverse proxy in front for anything larger |
 | Self-signed certificate | encrypts, but proves no identity | import as trusted, or install a real certificate |
-| No audit trail of *who* did what | applied commands are logged, but not the username | journal + `restore_network.log` give the *what*, not the *who* |
+| No audit trail of *who* did what | applied commands are logged, but not the username | account changes (create/delete/role/password-reset) *are* logged with the username; impairment changes are not |
 | Rate limit is per-process, in memory | counters reset when the service restarts | adequate for one instance |
 | No account lockout | only per-IP rate limiting | strong passwords; restricted network access |
 | No password complexity rules | 8-character minimum is the only check | policy/convention |

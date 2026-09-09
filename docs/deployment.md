@@ -64,13 +64,22 @@ What `setup.sh` does, step by step:
 
 | Step | Effect |
 |---|---|
+| asks about existing accounts | only on an upgrade; keeps them by default |
 | `apt-get update && apt-get install …` | installs the system packages listed above |
-| `rsync` to `/opt/tc_lab` | the app's permanent home |
+| `rsync` to `/opt/tc_lab` | the app's permanent home — runtime state is excluded, so this never overwrites accounts, certs or saved topology |
+| writes `config.json` | only if absent; an existing one is left alone |
 | `python3 -m venv venv` + `pip install -r requirements.txt` | dependencies isolated from system Python |
 | `venv/bin/python ssl_gen.py` | generates `cert.pem` / `key.pem` if missing |
-| `rm -f users.json` | forces the default admin account on first start |
-| writes `/etc/systemd/system/tc_lab.service` | the unit definition |
+| installs `/usr/local/bin/tc-lab` | the recovery CLI |
+| writes the systemd unit | from the tracked `tc_lab.service` (sandboxing + boot-time topology restore) |
 | `systemctl enable --now tc_lab` | starts it and enables start-at-boot |
+
+Useful overrides:
+
+| Variable | Effect |
+|---|---|
+| `TC_LAB_DIR` | install somewhere other than `/opt/tc_lab` (the unit is rewritten to match; `ProtectHome` is relaxed automatically for a home-directory install) |
+| `TC_LAB_UNIT_DIR` | write the systemd unit somewhere other than `/etc/systemd/system` |
 
 Then open **`https://<server-ip>:5000`** and sign in with `admin` / `tclab123`.
 Change that password immediately.
@@ -99,6 +108,28 @@ sudo docker compose up -d --build     # build image and start
 sudo docker compose logs -f           # follow logs
 sudo docker compose down              # stop and remove the container
 ```
+
+> **Debian 13 note:** if `--build` fails with *"compose build requires buildx
+> 0.17.0 or later"*, Debian's `docker-buildx` is older than the compose plugin
+> expects. Build in one step and start in another:
+>
+> ```bash
+> sudo DOCKER_BUILDKIT=0 docker build -t tc-lab:latest .
+> sudo docker compose up -d
+> ```
+
+**What the container can and cannot do.** With `--network host` and
+`CAP_NET_ADMIN`, it manages the host's real interfaces exactly like the systemd
+install — verified: creating 802.1Q sub-interfaces, creating bridges, adding
+members, and applying grouped impairments (including the per-member split) all
+work. The one thing it cannot do is **load kernel modules** (`CAP_SYS_MODULE` is
+dropped), which is why `8021q`, `sch_netem` and `br_netfilter` must be loaded on
+the host first — that is what the `modules-load.d` step above is for.
+
+Running Docker also creates a `docker0` bridge on the host, which will appear in
+TC Lab's bridge list. It is harmless and TC Lab never manages it, but on a
+dedicated appliance where you are using the systemd install, it is tidier not to
+have Docker installed at all.
 
 State (accounts, TLS cert, profiles, topology) lives in the `tc-lab-state`
 Docker volume and survives `down`/`up` and image rebuilds.
@@ -259,23 +290,46 @@ was changed.
 
 ## 7. Upgrading
 
-**Option A (systemd)** — back up first; state files are preserved:
+**Option A (systemd)**:
 
 ```bash
-sudo systemctl stop tc_lab
-sudo cp -a /opt/tc_lab /opt/tc_lab.bak-$(date +%F)
 cd /path/to/TC-GUI-LAB && git pull
 sudo bash setup.sh
 sudo systemctl status tc_lab
 ```
 
-`setup.sh` is safe to re-run: it refreshes code and dependencies. It does delete
-`users.json`, so **back it up first if you have accounts you want to keep**:
+`setup.sh` detects an existing install and **preserves your runtime state** —
+accounts, TLS certificate, `config.json`, saved impairments and topology are all
+kept. It refreshes only the application code, the virtualenv and the systemd unit.
+
+The one thing it asks about is accounts:
+
+```
+  Found an existing account store with 3 account(s):
+    /opt/tc_lab/users.json
+
+    [K] Keep them   — everyone signs in with their current password (default)
+    [R] Reset them  — delete all accounts; a fresh admin/tclab123 is created
+
+  Keep existing accounts? [K/r]
+```
+
+Answer with Enter to keep them. Choosing reset writes a timestamped backup
+(`users.json.<date>.bak`) before deleting, so it is recoverable.
+
+To skip the prompt — required for unattended runs:
 
 ```bash
-sudo cp /opt/tc_lab/users.json /root/users.json.bak
-# ...after setup.sh...
-sudo cp /root/users.json.bak /opt/tc_lab/users.json && sudo chmod 600 /opt/tc_lab/users.json
+sudo bash setup.sh --keep-users      # never prompt, keep accounts
+sudo bash setup.sh --reset-users     # never prompt, wipe accounts
+```
+
+With no TTY and no flag it defaults to **keeping** accounts and says so.
+
+A belt-and-braces backup before any upgrade is still cheap:
+
+```bash
+sudo cp -a /opt/tc_lab /opt/tc_lab.bak-$(date +%F)
 ```
 
 **Option B (container)**:

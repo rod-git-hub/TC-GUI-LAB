@@ -20,7 +20,9 @@ interfaces. Built for Fortinet SD-WAN, SASE, and general network lab testing.
 - CSRF protection, hardened session cookies, security headers, login rate-limiting
 - Light / Dark theme
 - Configurable idle session timeout
-- Role-based access — **admin** manages interfaces / bridges / VLANs, **user** changes impairments
+- Role-based access — **admin** manages interfaces / bridges / VLANs and user accounts,
+  **user** changes impairments
+- **User management in the dashboard** (admin-only) + `sudo tc-lab reset-admin-password` recovery
 - Runs under systemd **or** as a hardened container
 
 ---
@@ -85,6 +87,18 @@ journalctl -u tc_lab -n 100
 ls /opt/tc_lab/
 ```
 
+### Account recovery
+
+If no admin can sign in, reset the admin password from a shell on the host:
+
+```bash
+sudo tc-lab reset-admin-password
+```
+
+Prompts for the new password without echoing it, updates only the `admin`
+account, and leaves every other account untouched. `sudo tc-lab list-users`
+shows accounts and roles (never hashes).
+
 ---
 
 ## 🐳 Run as a container (alternative to systemd)
@@ -105,6 +119,8 @@ echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward      # for bridged / routed labs
 
 ```bash
 docker compose up -d --build
+# Debian 13: if --build fails on a buildx version error, do it in two steps:
+#   sudo DOCKER_BUILDKIT=0 docker build -t tc-lab:latest . && sudo docker compose up -d
 ```
 
 Open **https://your-host-ip:5000** (same default login). State (users, TLS cert, profiles,
@@ -198,6 +214,8 @@ tc-lab/
 ├── restore_network.sh  # Called by systemd ExecStartPre / container entrypoint
 ├── setup.sh            # systemd installer (deploys to /opt/tc_lab)
 ├── tc_lab.service      # systemd unit (sandboxed)
+├── cli.py              # `tc-lab` CLI — admin password recovery
+├── tc-lab              # CLI wrapper, symlinked to /usr/local/bin by setup.sh
 ├── Dockerfile          # Container image
 ├── docker-compose.yml  # Hardened container deployment
 ├── entrypoint.sh       # Container entrypoint (restore + run)

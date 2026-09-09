@@ -54,6 +54,10 @@ DATA = {
                       "wan_degraded": {"latency_ms": 200, "jitter_ms": 80, "loss_pct": 8}},
     "/api/config": {"idle_timeout_minutes": 30},
     "/api/auth/whoami": {"username": "admin", "role": sys.argv[1] if len(sys.argv) > 1 else "admin"},
+    "/api/users": {"ok": True, "self": "admin", "roles": ["admin", "user"],
+                   "users": [{"username": "admin", "role": "admin"},
+                             {"username": "operator", "role": "user"},
+                             {"username": "lab-tech", "role": "user"}]},
     "/api/stats/": {"ok": True, "raw": "qdisc netem 1: root refcnt 2 limit 1000 delay 5ms\n"
                                        " Sent 128944 bytes 1043 pkt (dropped 4, overlimits 0)\n"
                                        " backlog 0b 0p requeues 0"},

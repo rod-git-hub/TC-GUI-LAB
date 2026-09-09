@@ -1,5 +1,22 @@
 ## [v9.2] - 2026-09-08
 
+### Added — user management
+- **Admin-only User Management section** in the dashboard: create accounts, reset any
+  user's password, change roles, delete accounts. Hidden entirely from the `user` role,
+  and every `/api/users*` route is `@admin_required` (403 regardless of the client).
+- **`tc-lab` CLI for admin recovery** — `sudo tc-lab reset-admin-password` prompts
+  without echo, validates against the same password policy as the dashboard, backs up
+  the store, updates **only** the `admin` account, and verifies before reporting
+  success. Recreates `admin` if it was deleted. `sudo tc-lab list-users` shows accounts
+  and roles, never hashes. There is deliberately no command that reveals a password.
+  Installed to `/usr/local/bin/tc-lab` by `setup.sh`.
+- Guard rails enforced server-side: cannot delete your own account, cannot remove your
+  own admin role, cannot delete or demote the last admin.
+- Single password policy (`validate_password`) shared by the dashboard, the
+  self-service change form and the CLI. Now also rejects passwords over 72 bytes,
+  which bcrypt would otherwise silently truncate.
+- Account changes (create/delete/role/password reset) are logged with the username.
+
 ### Security
 - **Config import is now validated** (`_sanitize_bundle`). Previously a crafted bundle
   could write attacker-controlled JSON anywhere the root process could reach (profile

@@ -97,3 +97,12 @@ def ensure_cert():
     logger.info(">>> To avoid Chrome warning: chrome://settings/certificates")
     logger.info("    Authorities tab -> Import cert.pem -> Trust for HTTPS")
     return str(CERT_FILE), str(KEY_FILE)
+
+
+if __name__ == "__main__":
+    # Allows `python ssl_gen.py` to pre-generate the certificate at install
+    # time. Without this the module only defined functions and did nothing,
+    # so the cert was silently deferred to the app's first start.
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    cert, key = ensure_cert()
+    print(f"cert: {cert}\nkey:  {key}")

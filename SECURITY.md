@@ -26,6 +26,7 @@ for internet-facing deployment** and by design manipulates the host's live netwo
 | Headers | None | `X-Frame-Options`, `nosniff`, `Referrer-Policy`, HSTS, CSP |
 | Error handling | 500 returned the exception string | Generic message; detail in the log only |
 | Deployment | Unconfined systemd root only | Sandboxed unit **or** container with `NET_ADMIN`/`NET_RAW` only, read-only rootfs |
+| User management | Hand-edit `users.json` | Admin-only dashboard section; `tc-lab reset-admin-password` for recovery; `users.json` is `0600` |
 
 ## Remaining limitations
 
@@ -43,7 +44,9 @@ for internet-facing deployment** and by design manipulates the host's live netwo
 - Set `bind_address` in `config.json` to your management IP; firewall port 5000 to admin
   workstations only.
 - Change the default `admin / tclab123` password on first login.
-- Give day-to-day operators the **`user`** role; keep **`admin`** for topology changes.
+- Give day-to-day operators the **`user`** role; keep **`admin`** for topology and
+  account changes. Create accounts from the dashboard's Users section.
+- Passwords can only ever be *reset*, never displayed — including by the CLI.
 - Do not expose to the internet under any circumstances.
 
 ## Reporting a Vulnerability

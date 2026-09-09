@@ -7,7 +7,9 @@ from flask_login import login_required, current_user
 from flask_wtf import CSRFProtect
 from werkzeug.exceptions import HTTPException
 from auth           import (auth_bp, login_manager, limiter, get_or_create_secret,
-                            ensure_default_user, admin_required, role_required)
+                            ensure_default_user, admin_required, role_required,
+                            list_users, create_user, delete_user, set_password,
+                            set_role, VALID_ROLES)
 from tc_manager     import (apply_netem, remove_qdisc, get_qdisc_stats,
                              list_interfaces, detect_all_tc_configs, split_config_for_members)
 from bridge_manager import (create_bridge, delete_bridge, add_member, remove_member,
@@ -405,6 +407,60 @@ def api_set_config():
         except: return jsonify({"ok": False, "error": "Invalid value"}), 400
     _save_json(CONFIG_FILE, _config)
     return jsonify({"ok": True, "config": _config})
+
+# ── User management (admin only) ───────────────────────────────────────────────
+# Every route here is @admin_required, so a "user" role gets 403 regardless of
+# what the browser sends. Responses never include password hashes.
+
+@app.route("/api/users")
+@login_required
+@admin_required
+def api_list_users():
+    return jsonify({"ok": True, "users": list_users(), "roles": list(VALID_ROLES),
+                    "self": current_user.id})
+
+@app.route("/api/users", methods=["POST"])
+@login_required
+@admin_required
+def api_create_user():
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username", "")).strip()
+    if not _name_ok(username):
+        return jsonify({"ok": False, "error":
+            "Username must be 1-20 chars of a-z 0-9 . _ - and start with a letter or digit"}), 400
+    ok, msg = create_user(username, data.get("password", ""),
+                          data.get("role", "user"))
+    return jsonify({"ok": ok, "error": None if ok else msg,
+                    "message": msg if ok else None}), 200 if ok else 400
+
+@app.route("/api/users/<username>", methods=["DELETE"])
+@login_required
+@admin_required
+def api_delete_user(username):
+    ok, msg = delete_user(vname(username), acting_user=current_user.id)
+    return jsonify({"ok": ok, "error": None if ok else msg,
+                    "message": msg if ok else None}), 200 if ok else 400
+
+@app.route("/api/users/<username>/password", methods=["POST"])
+@login_required
+@admin_required
+def api_reset_password(username):
+    """Admin reset — does not require the target's current password. Admins can
+    only set a new one; no route ever reveals an existing password or hash."""
+    data = request.get_json(silent=True) or {}
+    ok, msg = set_password(vname(username), data.get("new", ""))
+    return jsonify({"ok": ok, "error": None if ok else msg,
+                    "message": msg if ok else None}), 200 if ok else 400
+
+@app.route("/api/users/<username>/role", methods=["POST"])
+@login_required
+@admin_required
+def api_set_role(username):
+    data = request.get_json(silent=True) or {}
+    ok, msg = set_role(vname(username), data.get("role", ""),
+                       acting_user=current_user.id)
+    return jsonify({"ok": ok, "error": None if ok else msg,
+                    "message": msg if ok else None}), 200 if ok else 400
 
 # ── Bridges ────────────────────────────────────────────────────────────────────
 @app.route("/api/bridges")
