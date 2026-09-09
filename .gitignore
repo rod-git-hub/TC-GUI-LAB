@@ -27,3 +27,6 @@ venv/
 .idea/
 *.swp
 .DS_Store
+
+# UI design preview (tools/ui-preview.py)
+_preview.html
