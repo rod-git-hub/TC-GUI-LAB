@@ -1,5 +1,6 @@
 # ── Runtime state & secrets (created on first run — never commit) ──
 users.json
+config.json
 secret_key.txt
 cert.pem
 key.pem
