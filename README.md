@@ -45,6 +45,9 @@ cd tc-lab
 sudo bash setup.sh
 ```
 
+Full instructions — all three install methods, configuration, service control,
+logs, upgrade and uninstall — are in **[docs/deployment.md](docs/deployment.md)**.
+
 `setup.sh` will:
 - Install all dependencies (`requirements.txt`)
 - Copy files to `/opt/tc_lab`
@@ -175,7 +178,9 @@ interfaces. Use "Member controls" to fine-tune individual interfaces.
 - Bind to your management IP (`bind_address` in `config.json`) and firewall port 5000
 - Prefer the container deployment — it drops all capabilities except `NET_ADMIN`/`NET_RAW`
 
-See [SECURITY.md](SECURITY.md) for the full security model and known limitations.
+See [SECURITY.md](SECURITY.md) for the security model and known limitations,
+and [docs/users-and-security.md](docs/users-and-security.md) for how accounts,
+password hashing, roles and hardening actually work.
 
 ---
 
@@ -199,6 +204,8 @@ tc-lab/
 ├── requirements.txt    # Pinned runtime deps  (requirements-dev.txt adds pytest)
 ├── profiles/           # Default JSON impairment profiles (seed data)
 ├── templates/          # HTML templates (index.html, login.html)
+├── tools/ui-preview.py # Render the UI against a fixture, no backend needed
+├── docs/               # deployment, users & security, upgrade guides
 ├── tests/              # pytest security regression suite
 └── <STATE_DIR>/        # Writable state — defaults to the app dir; set
     ├── network_config.json #   TC_LAB_STATE_DIR to move onto a volume.
