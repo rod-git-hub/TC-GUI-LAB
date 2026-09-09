@@ -345,7 +345,7 @@ page can hold a stale CSRF token, and every action then fails with
 Rolling back = restoring the backup directory and restarting.
 
 > Migrating an existing v9.x install to v9.2 has extra steps —
-> see [upgrade-to-9.2.md](upgrade-to-9.2.md).
+> see [upgrading.md](upgrading.md).
 
 ---
 

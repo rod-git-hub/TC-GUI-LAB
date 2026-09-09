@@ -247,18 +247,29 @@ tc-lab/
 
 ## Screenshots
 
-![TC login](https://github.com/user-attachments/assets/d63dbd0b-c29a-48d1-b8aa-14f37926ef4d)
+### TC Emulation — impairments per interface or per bridge
+![TC Emulation](docs/img/02-tc-emulation.png)
 
+### Interfaces & VLANs — physical NICs with their 802.1Q sub-interfaces
+![Interfaces and VLANs](docs/img/03-interfaces-vlans.png)
 
-![TC Traffic Emulation Control](https://github.com/user-attachments/assets/d3ba2b8d-0ca2-4216-9d9f-7ce2920ec7c8)
+### Bridge Manager — group interfaces into a path
+![Bridge Manager](docs/img/04-bridge-manager.png)
 
+### User Management — admin-only accounts and roles
+![User Management](docs/img/05-user-management.png)
 
-![TC Bridge Manager](https://github.com/user-attachments/assets/633ea034-63b9-49b8-a4ef-0a4484ae61bb)
+### Sign in
+![Sign in](docs/img/01-login.png)
 
+### Light theme
+![Light theme](docs/img/06-light-theme.png)
 
-![TC Interface Manager](https://github.com/user-attachments/assets/80ba48c4-5f8b-4d48-a630-149d0a0579ab)
+<sub>Screenshots are generated from the UI itself with
+<code>python3 tools/capture-screenshots.py</code> — re-run it after any UI change
+so they never go stale.</sub>
 
-
+### Reference topology
 ![Design Sample Diagram](https://github.com/user-attachments/assets/f0ad6610-5d49-46e8-9d68-17c4d95112ad)
 
 ---
