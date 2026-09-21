@@ -30,6 +30,25 @@
   bundles, and re-created on restore. They are now excluded from the saved topology and
   skipped by `restore_helper.py`; the UI still lists them, so you can impair one.
 
+### Security — systemd confinement
+- **`CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_MODULE`** on the unit.
+  Without it the service held all **40** of root's capabilities and used three; the
+  other 37 — `CAP_SYS_ADMIN`, `CAP_SYS_PTRACE`, `CAP_DAC_OVERRIDE`, `CAP_SETUID`,
+  `CAP_SYS_BOOT`, `CAP_SYS_RAWIO` among them — were pure blast radius for a Flask app
+  that shells out to iproute2. This is the same confinement the container gets from
+  `cap_drop: ALL` + `NET_ADMIN`/`NET_RAW`, keeping `SYS_MODULE`, which the container
+  cannot have, so a systemd install can still `modprobe 8021q` itself.
+
+  Verified against every privileged operation the app performs — VLAN create/delete,
+  bridge create/delete, member add/remove, interface up/down, `stp_state`, netem
+  (delay, jitter, loss, duplicate, corrupt), HTB rate limiting, qdisc read and removal,
+  all four `ip`/`bridge` reads, `modprobe`, the `net.ipv4.ip_forward` write, and state-
+  file writes with their `chmod`s: 24/24, with negative controls confirming `modprobe`
+  needs `SYS_MODULE` and the sysctl write needs `NET_ADMIN`.
+
+  Note the dependency: dropping `CAP_DAC_OVERRIDE` means the app can only write files
+  it owns, which is why `setup.sh` chowns the install to root. The two go together.
+
 ### Fixed — host prerequisites
 - **`br_netfilter` is no longer recommended, and a protective sysctl drop-in is
   shipped.** It was listed as a container host prerequisite in five places, but no

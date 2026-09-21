@@ -17,6 +17,24 @@ RestartSec=5
 # ── Hardening (kept compatible with a root app that needs tc/ip/modprobe) ──
 # Assumes the /opt/tc_lab install path. For an install elsewhere, change
 # ReadWritePaths (and drop ProtectHome if it lives under /home).
+#
+# Capability confinement. Without this line the service holds all 40 of root's
+# capabilities; it uses three. Everything else — CAP_SYS_ADMIN, CAP_SYS_PTRACE,
+# CAP_DAC_OVERRIDE, CAP_SETUID, CAP_SYS_BOOT and the rest — is pure blast radius
+# for a Flask app that shells out to iproute2.
+#
+#   CAP_NET_ADMIN   ip link / tc qdisc / bridge, and writing net.* sysctls
+#   CAP_NET_RAW     required alongside NET_ADMIN for netem
+#   CAP_SYS_MODULE  modprobe 8021q when a VLAN is created on a fresh host
+#
+# This is the same confinement the container deployment gets via cap_drop: ALL
+# plus NET_ADMIN/NET_RAW — with SYS_MODULE kept, which the container cannot have,
+# so the systemd install can still load 8021q itself.
+#
+# Note the dependency on root-owned files: dropping CAP_DAC_OVERRIDE means the
+# app can only write files it actually owns, which is why setup.sh chowns the
+# install to root (see its step 6). Do not weaken one without the other.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_MODULE
 NoNewPrivileges=yes
 ProtectSystem=full
 ProtectHome=yes
