@@ -8,6 +8,7 @@ __pycache__/
 *.pyc
 # runtime state / secrets — must never enter the image
 state/
+config.json
 users.json
 secret_key.txt
 cert.pem
