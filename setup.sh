@@ -62,6 +62,11 @@ done
 
 [ "$(id -u)" -eq 0 ] || { echo "error: run this as root (sudo bash setup.sh)" >&2; exit 1; }
 
+# ip, tc and bridge live in /usr/sbin. Root's secure_path has it, but `sudo -E`
+# hands over the calling user's PATH, which does not — so put them back.
+case ":${PATH}:" in *:/usr/sbin:*) ;; *) PATH="${PATH}:/usr/sbin:/sbin" ;; esac
+export PATH
+
 # ── Snapshots / rollback ───────────────────────────────────────────────────
 # A snapshot is the whole install directory minus venv and __pycache__ — code
 # AND state, so restoring one returns accounts, certificate, topology and saved
@@ -203,6 +208,13 @@ else
 fi
 
 # ── 1. System dependencies ─────────────────────────────────────────────────
+# Debian/Ubuntu only. The app itself is distribution-agnostic, but this
+# installer is not and does not pretend to be.
+if ! command -v apt-get >/dev/null 2>&1; then
+    echo "error: this installer requires apt (Debian / Ubuntu)." >&2
+    echo "       See docs/deployment.md for running TC Lab elsewhere." >&2
+    exit 1
+fi
 apt-get update -qq
 apt-get install -y python3 python3-pip python3-venv iproute2 bridge-utils rsync
 
