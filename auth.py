@@ -27,10 +27,19 @@ limiter=Limiter(key_func=get_remote_address, default_limits=[], storage_uri="mem
 _DUMMY_HASH=bcrypt.hashpw(b"x",bcrypt.gensalt(rounds=12)).decode()
 
 def _safe_next(target):
-    """Only allow same-host relative redirects after login (no open redirect)."""
-    if not target: return None
+    """Only allow same-host relative redirects after login (no open redirect).
+
+    urlparse follows RFC 3986, but browsers follow the WHATWG URL rules: they
+    read "\\" as "/" and strip tab/CR/LF before parsing. So "/\\evil.example"
+    and "/<TAB>/evil.example" both reach the browser as "//evil.example" -- a
+    different host -- while urlparse reports an innocent relative path. Reject
+    those characters outright rather than trying to normalise them.
+    """
+    if not target or not isinstance(target,str): return None
+    if any(c=="\\" or ord(c)<0x20 or ord(c)==0x7f for c in target): return None
+    if not target.startswith("/") or target.startswith("//"): return None
     u=urlparse(target)
-    return target if (not u.scheme and not u.netloc and target.startswith("/")) else None
+    return target if (not u.scheme and not u.netloc) else None
 class User(UserMixin):
     def __init__(self,username,role="user"): self.id=username; self.role=role
 def _load_users():

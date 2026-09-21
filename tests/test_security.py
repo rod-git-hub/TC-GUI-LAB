@@ -204,3 +204,39 @@ def test_open_redirect_blocked():
     assert auth._safe_next("http://x/a") is None
     assert auth._safe_next("/vlans") == "/vlans"
     assert auth._safe_next(None) is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Open redirect — WHATWG vs RFC 3986 (CodeQL py/url-redirection, alert #17)
+# ─────────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("bad", [
+    "https://evil.example/", "//evil.example/", "http://x/a",
+    "/\\evil.example",        # browsers read "\" as "/" → //evil.example
+    "/\\/evil.example",
+    "/\tevil.example",        # tab/CR/LF are stripped before parsing
+    "/\r/evil.example",
+    "/\n/evil.example",
+    "\\/evil.example",
+    "", None, 123,
+])
+def test_safe_next_rejects(bad):
+    assert auth._safe_next(bad) is None
+
+
+@pytest.mark.parametrize("ok", ["/", "/vlans", "/a/b?x=1", "/p#frag"])
+def test_safe_next_accepts_relative(ok):
+    assert auth._safe_next(ok) == ok
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rejected values echoed in import errors are bounded (CodeQL alert #18)
+# ─────────────────────────────────────────────────────────────────────────────
+def test_import_error_truncates_echoed_name():
+    with pytest.raises(ValueError) as ei:
+        app._sanitize_bundle({"profiles": {"!" * 5000: {}}})
+    assert len(str(ei.value)) < 120
+
+
+def test_import_error_still_identifies_short_name():
+    with pytest.raises(ValueError, match="../pwn"):
+        app._sanitize_bundle({"profiles": {"../pwn": {}}})

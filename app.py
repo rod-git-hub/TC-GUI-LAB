@@ -228,6 +228,13 @@ def vlan_id_ok(v):
     try:    return 1 <= int(v) <= 4094
     except: return False
 
+def _show(v, maxlen=40):
+    """Quote a rejected value for an error message, truncated. The name that
+    failed validation is echoed back so the admin can find it in their bundle,
+    but it is attacker-supplied and unbounded in length -- cap it."""
+    s = repr(v)
+    return s if len(s) <= maxlen else s[:maxlen] + "...'"
+
 def _sanitize_bundle(bundle):
     """Validate an imported config bundle before any of it is written to disk or
     replayed through `ip`/`tc`. Returns a cleaned copy; raises ValueError on any
@@ -246,9 +253,9 @@ def _sanitize_bundle(bundle):
         out = {}
         for name, cfg in profs.items():
             if not _name_ok(name):
-                raise ValueError(f"invalid profile name: {name!r}")
+                raise ValueError(f"invalid profile name: {_show(name)}")
             if not isinstance(cfg, dict):
-                raise ValueError(f"invalid profile config for {name!r}")
+                raise ValueError(f"invalid profile config for {_show(name)}")
             out[name] = vconfig(cfg)
         clean["profiles"] = out
 
@@ -259,7 +266,7 @@ def _sanitize_bundle(bundle):
         out = {}
         for iface, text in labels.items():
             if not _name_ok(iface):
-                raise ValueError(f"invalid label interface: {iface!r}")
+                raise ValueError(f"invalid label interface: {_show(iface)}")
             out[iface] = str(text)[:80]
         clean["labels"] = out
 
@@ -270,9 +277,9 @@ def _sanitize_bundle(bundle):
         out = {}
         for iface, cfg in st.items():
             if not _name_ok(iface):
-                raise ValueError(f"invalid tc_state interface: {iface!r}")
+                raise ValueError(f"invalid tc_state interface: {_show(iface)}")
             if not isinstance(cfg, dict):
-                raise ValueError(f"invalid tc_state config for {iface!r}")
+                raise ValueError(f"invalid tc_state config for {_show(iface)}")
             out[iface] = vconfig(cfg)
         clean["tc_state"] = out
 
@@ -283,15 +290,15 @@ def _sanitize_bundle(bundle):
         cn = {"bridges": {}, "vlans": []}
         for br, info in (net.get("bridges") or {}).items():
             if not _name_ok(br):
-                raise ValueError(f"invalid bridge name: {br!r}")
+                raise ValueError(f"invalid bridge name: {_show(br)}")
             if not isinstance(info, dict):
-                raise ValueError(f"invalid bridge info for {br!r}")
+                raise ValueError(f"invalid bridge info for {_show(br)}")
             members = info.get("members") or []
             if not isinstance(members, list):
-                raise ValueError(f"invalid members list for {br!r}")
+                raise ValueError(f"invalid members list for {_show(br)}")
             for m in members:
                 if not _name_ok(m):
-                    raise ValueError(f"invalid bridge member: {m!r}")
+                    raise ValueError(f"invalid bridge member: {_show(m)}")
             cn["bridges"][br] = {"members": list(members),
                                  "stp": bool(info.get("stp", False))}
         vlans = net.get("vlans") or []
@@ -302,11 +309,11 @@ def _sanitize_bundle(bundle):
                 raise ValueError("invalid vlan entry")
             nm, pa, vid = v.get("name", ""), v.get("parent", ""), v.get("vlan_id")
             if not _name_ok(nm):
-                raise ValueError(f"invalid vlan name: {nm!r}")
+                raise ValueError(f"invalid vlan name: {_show(nm)}")
             if not _name_ok(pa):
-                raise ValueError(f"invalid vlan parent: {pa!r}")
+                raise ValueError(f"invalid vlan parent: {_show(pa)}")
             if not vlan_id_ok(vid):
-                raise ValueError(f"invalid vlan id: {vid!r}")
+                raise ValueError(f"invalid vlan id: {_show(vid)}")
             cn["vlans"].append({"name": nm, "parent": pa, "vlan_id": int(vid)})
         clean["network"] = cn
 
