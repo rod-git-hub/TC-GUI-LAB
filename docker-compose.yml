@@ -5,7 +5,7 @@
 # privileges, read-only root filesystem, state on a named volume.
 #
 # Host prerequisites (host networking = the container cannot load modules itself):
-#   sudo modprobe 8021q sch_netem br_netfilter      # or use modules-load.d/tc-lab.conf
+#   sudo modprobe 8021q sch_netem      # or use modules-load.d/tc-lab.conf
 #   echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward # for bridged/routed labs
 #
 # Then:  docker compose up -d   →   https://<host-ip>:5000   (admin / tclab123)

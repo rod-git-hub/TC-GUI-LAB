@@ -65,7 +65,7 @@ Under host networking the container cannot load kernel modules itself — it has
 
 ```bash
 sudo cp modules-load.d/tc-lab.conf /etc/modules-load.d/
-sudo modprobe 8021q sch_netem br_netfilter
+sudo modprobe 8021q sch_netem
 ```
 
 The first line makes it survive a reboot. Skip this and VLAN creation fails with a
@@ -76,6 +76,42 @@ For bridged or routed labs you also want:
 ```bash
 echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
 ```
+
+---
+
+## Installing Docker changes host networking — read this first
+
+If Docker is not yet installed, installing it does two things that can stop lab
+traffic dead:
+
+1. It loads **`br_netfilter`**, whose sysctls default to `1`, so *bridged* frames
+   start traversing iptables.
+2. It sets the iptables **`FORWARD` policy to `DROP`**.
+
+Together those mean frames bridged between two lab interfaces go through the
+`FORWARD` chain and get dropped. The bridge still shows as up, members still show as
+`forwarding`, `tc` still shows your impairments — and no traffic crosses. It is a
+genuinely confusing failure because everything you would normally check looks right.
+
+Apply the supplied drop-in as part of installing Docker:
+
+```bash
+sudo cp sysctl.d/tc-lab.conf /etc/sysctl.d/ && sudo sysctl --system
+```
+
+Then confirm:
+
+```bash
+sysctl net.bridge.bridge-nf-call-iptables && sudo iptables -S FORWARD | head -1
+```
+
+`bridge-nf-call-iptables = 0` means bridged frames bypass iptables regardless of what
+the `FORWARD` policy says. If the key does not exist at all, `br_netfilter` is not
+loaded and you have nothing to worry about yet.
+
+> This is also why `br_netfilter` is **not** in `modules-load.d/tc-lab.conf`. TC Lab
+> never needs it — it exists to expose bridged traffic to iptables, which is the
+> opposite of what an L2 impairment path wants.
 
 ---
 
@@ -232,6 +268,11 @@ The page is cached from the other instance. Hard-refresh with `Ctrl-Shift-R`.
 
 **`docker compose build` fails on a buildx version error.**
 Debian 13. Use the two-step build in *systemd → container*, step 2.
+
+**Bridges are up and impairments are set, but no traffic crosses.**
+Docker's `FORWARD` policy plus `br_netfilter`. See *Installing Docker changes host
+networking* above. Quick check:
+`sysctl net.bridge.bridge-nf-call-iptables` — if it is `1`, apply the drop-in.
 
 **`docker0` shows up in the interface list.**
 Expected — Docker creates it. It is deliberately excluded from saved topology and

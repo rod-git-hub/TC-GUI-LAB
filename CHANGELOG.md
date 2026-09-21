@@ -30,6 +30,17 @@
   bundles, and re-created on restore. They are now excluded from the saved topology and
   skipped by `restore_helper.py`; the UI still lists them, so you can impair one.
 
+### Fixed — host prerequisites
+- **`br_netfilter` is no longer recommended, and a protective sysctl drop-in is
+  shipped.** It was listed as a container host prerequisite in five places, but no
+  code has ever needed it: it exists to push *bridged* frames through iptables, the
+  opposite of what an L2 impairment path wants. Installing Docker loads it anyway
+  (defaulting `net.bridge.bridge-nf-call-*` to `1`) *and* sets the iptables `FORWARD`
+  policy to `DROP` — together those stop traffic crossing a lab bridge while the
+  bridge, its members and its qdiscs all still look correctly configured. Removed
+  from `modules-load.d/tc-lab.conf`; new `sysctl.d/tc-lab.conf` pins the three keys
+  to `0` (each prefixed `-`, so the file is inert where the module was never loaded).
+
 ### Added — docs
 - **`docs/systemd-and-container.md`** — switching between the two deployments in both
   directions. Covers the two rules that bite: only one may run at a time (both adopt

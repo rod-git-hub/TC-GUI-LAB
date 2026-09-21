@@ -111,9 +111,18 @@ read-only root filesystem instead of as unconfined host root.
 
 ```bash
 sudo cp modules-load.d/tc-lab.conf /etc/modules-load.d/
-sudo modprobe 8021q sch_netem br_netfilter
+sudo modprobe 8021q sch_netem
 echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward      # for bridged / routed labs
 ```
+
+> ⚠️ **If your bridges carry lab traffic, apply this too.** Installing Docker loads
+> `br_netfilter` (sending *bridged* frames through iptables) and sets the iptables
+> `FORWARD` policy to `DROP` — together they silently stop traffic crossing your
+> bridges, while everything still *looks* correctly configured.
+>
+> ```bash
+> sudo cp sysctl.d/tc-lab.conf /etc/sysctl.d/ && sudo sysctl --system
+> ```
 
 **Start:**
 
@@ -232,6 +241,8 @@ tc-lab/
 ├── docker-compose.yml  # Hardened container deployment
 ├── entrypoint.sh       # Container entrypoint (restore + run)
 ├── requirements.txt    # Pinned runtime deps  (requirements-dev.txt adds pytest)
+├── modules-load.d/     # 8021q + sch_netem for container hosts
+├── sysctl.d/           # keeps bridged frames out of iptables (Docker hosts)
 ├── profiles/           # Default JSON impairment profiles (seed data)
 ├── templates/          # HTML templates (index.html, login.html)
 ├── tools/              # ui-preview.py, capture-screenshots.py (dev helpers)

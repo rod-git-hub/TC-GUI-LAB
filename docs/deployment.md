@@ -97,7 +97,7 @@ Host prerequisites — the container cannot load kernel modules itself:
 
 ```bash
 sudo cp modules-load.d/tc-lab.conf /etc/modules-load.d/
-sudo modprobe 8021q sch_netem br_netfilter
+sudo modprobe 8021q sch_netem
 echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
 ```
 
@@ -123,8 +123,23 @@ sudo docker compose down              # stop and remove the container
 install — verified: creating 802.1Q sub-interfaces, creating bridges, adding
 members, and applying grouped impairments (including the per-member split) all
 work. The one thing it cannot do is **load kernel modules** (`CAP_SYS_MODULE` is
-dropped), which is why `8021q`, `sch_netem` and `br_netfilter` must be loaded on
-the host first — that is what the `modules-load.d` step above is for.
+dropped), which is why `8021q` and `sch_netem` must be loaded on the host first —
+that is what the `modules-load.d` step above is for.
+
+**Installing Docker changes host networking.** It loads `br_netfilter` — which
+defaults `net.bridge.bridge-nf-call-iptables` to `1`, sending *bridged* frames
+through iptables — and it sets the iptables `FORWARD` policy to `DROP`. On a host
+whose bridges carry lab traffic, those two together stop that traffic: the bridge
+still looks up and correctly configured, packets simply stop crossing it. Install
+the supplied drop-in before or immediately after installing Docker:
+
+```bash
+sudo cp sysctl.d/tc-lab.conf /etc/sysctl.d/ && sudo sysctl --system
+```
+
+It sets the three `bridge-nf-call-*` keys to `0`, keeping bridged frames out of
+iptables entirely. Each key is prefixed with `-` so the file is harmless on a host
+where `br_netfilter` was never loaded.
 
 Running Docker also creates a `docker0` bridge on the host, which will appear in
 TC Lab's bridge list. It is harmless and TC Lab never manages it, but on a
