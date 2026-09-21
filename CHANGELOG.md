@@ -18,6 +18,17 @@
 - Account changes (create/delete/role/password reset) are logged with the username.
 
 ### Security
+- **Installed files are now owned by root** (`setup.sh` step 6). The unit has no
+  `User=`, so the app runs as root, but `rsync -a` preserves the checkout's owner when
+  it runs as root — so `git clone && sudo bash setup.sh` left root-executed code owned
+  and writable by the unprivileged user who cloned it, a local privilege-escalation
+  path. The installer now takes ownership explicitly and drops group/other write.
+- **Open redirect after login closed properly** (`_safe_next`). The previous check
+  asked `urlparse` whether `next` was relative; `urlparse` follows RFC 3986, but
+  browsers follow the WHATWG URL rules — they read `\` as `/` and strip tab/CR/LF
+  before parsing. `/\evil.example` therefore passed as a harmless relative path while
+  the browser resolved it to `//evil.example`. Backslashes and control characters are
+  now rejected outright and exactly one leading slash is required.
 - **Config import is now validated** (`_sanitize_bundle`). Previously a crafted bundle
   could write attacker-controlled JSON anywhere the root process could reach (profile
   names were used as file paths unchecked) — arbitrary file write as root. All names in

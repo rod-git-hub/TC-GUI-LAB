@@ -148,13 +148,22 @@ case "$USERS_MODE" in
         ;;
 esac
 
-# ── 6. Executable bits + CLI ───────────────────────────────────────────────
+# ── 6. Ownership ───────────────────────────────────────────────────────────
+# The unit has no User=, so the app runs as root. rsync -a (-rlptgoD) preserves
+# the checkout's owner when it runs as root, so a normal "git clone && sudo bash
+# setup.sh" would otherwise leave root-executed code owned and writable by the
+# unprivileged user who cloned it — a local privilege-escalation path. Take
+# ownership explicitly and drop group/other write.
+chown -R root:root "${INSTALL_DIR}"
+chmod -R go-w "${INSTALL_DIR}"
+
+# ── 7. Executable bits + CLI ───────────────────────────────────────────────
 chmod +x "${INSTALL_DIR}/restore_network.sh" "${INSTALL_DIR}/restore_helper.py"
 chmod +x "${INSTALL_DIR}/tc-lab" "${INSTALL_DIR}/cli.py"
 ln -sf "${INSTALL_DIR}/tc-lab" /usr/local/bin/tc-lab
 echo "[*] CLI installed: sudo tc-lab reset-admin-password"
 
-# ── 7. systemd unit ────────────────────────────────────────────────────────
+# ── 8. systemd unit ────────────────────────────────────────────────────────
 # Installed from the tracked tc_lab.service so the sandboxing options and the
 # ExecStartPre topology restore stay in one place (an earlier version of this
 # script wrote a stripped-down unit inline and silently dropped both).
@@ -170,7 +179,7 @@ case "${INSTALL_DIR}" in
 esac
 echo "[*] Service file written to ${SERVICE_FILE}"
 
-# ── 8. Enable and start ────────────────────────────────────────────────────
+# ── 9. Enable and start ────────────────────────────────────────────────────
 systemctl daemon-reload
 systemctl enable "${SERVICE}" >/dev/null 2>&1
 systemctl restart "${SERVICE}"
