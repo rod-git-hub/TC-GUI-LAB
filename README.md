@@ -126,6 +126,16 @@ docker compose up -d --build
 Open **https://your-host-ip:5000** (same default login). State (users, TLS cert, profiles,
 topology) lives in the `tc-lab-state` volume and survives `docker compose down`.
 
+> **Moving an existing systemd install to the container — or back?**
+> The volume starts **empty**: nothing carries over from `/opt/tc_lab` on its own, and
+> only one of the two may run at a time. See
+> **[docs/systemd-and-container.md](docs/systemd-and-container.md)** for the migration
+> steps in both directions.
+
+> **systemd is the tested path.** The container's capabilities and core operations
+> (VLAN, bridge and grouped impairment management under `NET_ADMIN`/`NET_RAW` alone)
+> have been verified, but it has not been run as a long-lived deployment.
+
 | | systemd | Container |
 |---|---|---|
 | Manages host interfaces | yes | yes (`--network host`) |
@@ -192,7 +202,9 @@ interfaces. Use "Member controls" to fine-tune individual interfaces.
 - Config-import bundles are fully validated before anything is written or replayed
 - Change the default password immediately
 - Bind to your management IP (`bind_address` in `config.json`) and firewall port 5000
-- Prefer the container deployment — it drops all capabilities except `NET_ADMIN`/`NET_RAW`
+- The container deployment is more confined — it drops all capabilities except
+  `NET_ADMIN`/`NET_RAW`, adds `no-new-privileges` and a read-only root filesystem —
+  but systemd is the path with production soak time behind it
 
 See [SECURITY.md](SECURITY.md) for the security model and known limitations,
 and [docs/users-and-security.md](docs/users-and-security.md) for how accounts,
@@ -223,7 +235,7 @@ tc-lab/
 ├── profiles/           # Default JSON impairment profiles (seed data)
 ├── templates/          # HTML templates (index.html, login.html)
 ├── tools/              # ui-preview.py, capture-screenshots.py (dev helpers)
-├── docs/               # deployment, upgrading, users & security, screenshots
+├── docs/               # deployment, upgrading, users & security, systemd↔container
 ├── tests/              # pytest suite (security + user management)
 └── <STATE_DIR>/        # Writable state — defaults to the app dir; set
     ├── config.json         #   TC_LAB_STATE_DIR to move onto a volume.

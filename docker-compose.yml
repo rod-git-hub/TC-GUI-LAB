@@ -35,3 +35,7 @@ services:
 
 volumes:
   tc-lab-state:
+    # Pinned, so the volume is not silently prefixed with the project directory
+    # name (compose would otherwise create e.g. "tc-gui-lab_tc-lab-state", and
+    # every documented `docker volume` command would depend on where you cloned).
+    name: tc-lab-state

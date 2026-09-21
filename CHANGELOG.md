@@ -30,6 +30,20 @@
   bundles, and re-created on restore. They are now excluded from the saved topology and
   skipped by `restore_helper.py`; the UI still lists them, so you can impair one.
 
+### Added — docs
+- **`docs/systemd-and-container.md`** — switching between the two deployments in both
+  directions. Covers the two rules that bite: only one may run at a time (both adopt
+  and re-apply `tc` to the same host interfaces, so `systemctl disable --now tc_lab`
+  first), and the container's volume starts **empty** so nothing carries over from
+  `/opt/tc_lab` — including `network_config.json`, whose loss is invisible until the
+  next reboot, because the live topology survives the switch.
+
+### Changed — container
+- **The state volume's name is pinned to `tc-lab-state`.** Compose was prefixing it
+  with the project directory name, so the real volume was something like
+  `tc-gui-lab_tc-lab-state` and any documented `docker volume` command depended on
+  where you happened to clone.
+
 ### Changed — installer
 - **`setup.sh` snapshots before every upgrade** and can undo one:
   `--list-backups` / `--rollback [NAME]`. A snapshot is the whole install — code *and*
