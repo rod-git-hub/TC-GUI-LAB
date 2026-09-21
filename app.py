@@ -14,7 +14,8 @@ from tc_manager     import (apply_netem, remove_qdisc, get_qdisc_stats,
                              list_interfaces, detect_all_tc_configs, split_config_for_members)
 from bridge_manager import (create_bridge, delete_bridge, add_member, remove_member,
                              set_bridge_up, get_bridge_stats, get_all_bridges,
-                             get_all_link_info, list_unbridged_interfaces)
+                             get_all_link_info, list_unbridged_interfaces,
+                             is_foreign_bridge)
 from vlan_manager   import (list_vlan_interfaces, list_physical_interfaces,
                              create_vlan, delete_vlan, set_iface_up, get_iface_stats)
 
@@ -104,10 +105,13 @@ def save_net_config():
     try:
         bridges = get_all_bridges()
         vlans   = list_vlan_interfaces()
+        skipped = [br for br in bridges if is_foreign_bridge(br)]
+        if skipped:
+            logger.info("Not persisting foreign bridge(s): %s", ", ".join(skipped))
         data = {
             "bridges": {
                 br: {"members": info.get("members", []), "stp": False}
-                for br, info in bridges.items()
+                for br, info in bridges.items() if not is_foreign_bridge(br)
             },
             "vlans": [
                 {"name": v["name"], "parent": v["parent"], "vlan_id": v["vlan_id"]}

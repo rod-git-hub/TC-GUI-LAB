@@ -240,3 +240,21 @@ def test_import_error_truncates_echoed_name():
 def test_import_error_still_identifies_short_name():
     with pytest.raises(ValueError, match="../pwn"):
         app._sanitize_bundle({"profiles": {"../pwn": {}}})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Foreign bridges (docker0 …) must not enter the saved topology, or a config
+# export would carry them and a restore would try to recreate them.
+# ─────────────────────────────────────────────────────────────────────────────
+def test_save_net_config_skips_foreign_bridges(base, monkeypatch):
+    monkeypatch.setattr(app, "get_all_bridges", lambda: {
+        "br-wan1":        {"members": ["eth1", "eth2"]},
+        "docker0":        {"members": ["veth9a1"]},
+        "br-1a2b3c4d5e6f": {"members": []},
+        "virbr0":         {"members": []},
+    })
+    monkeypatch.setattr(app, "list_vlan_interfaces", lambda: [])
+    app.save_net_config()
+    saved = json.loads(app.NET_CONFIG_FILE.read_text())
+    assert list(saved["bridges"]) == ["br-wan1"]
+    assert saved["bridges"]["br-wan1"]["members"] == ["eth1", "eth2"]

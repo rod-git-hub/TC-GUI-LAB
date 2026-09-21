@@ -17,6 +17,35 @@
   which bcrypt would otherwise silently truncate.
 - Account changes (create/delete/role/password reset) are logged with the username.
 
+### Fixed
+- **VLANs could vanish from exports.** `ip -j link show type vlan` omits `linkinfo`
+  entirely for a VLAN that is a bridge member, and the name-parse fallback only works
+  for dotted names — so a VLAN that was *both* a bridge member *and* non-dotted (e.g.
+  `wan1`) had no resolvable id and was silently skipped, taking it out of every config
+  export and therefore out of any restore. Falls back to the kernel's own registry at
+  `/proc/net/vlan/config`, which is authoritative in both cases. Latent since v9.1.
+- **Foreign bridges are no longer captured or recreated.** `docker0`, Docker's
+  `br-<hex>` networks, `virbr*`, `lxcbr*` and `podman*` belong to other daemons, which
+  create them on start. They were being written into `network_config.json`, exported in
+  bundles, and re-created on restore. They are now excluded from the saved topology and
+  skipped by `restore_helper.py`; the UI still lists them, so you can impair one.
+
+### Changed — installer
+- **`setup.sh` snapshots before every upgrade** and can undo one:
+  `--list-backups` / `--rollback [NAME]`. A snapshot is the whole install — code *and*
+  state (accounts, certificate, topology, saved impairments) — so a rollback restores
+  the exact prior install. Five are kept in `TC_LAB_BACKUP_DIR` (default
+  `/var/backups/tc-lab`); `--no-backup` skips taking one. Restores are staged in a temp
+  directory and validated before anything is overwritten.
+- **Upgrades now remove files that are no longer shipped.** The rsync had no `--delete`,
+  so anything deleted from the project lingered on every install forever. State files
+  are protected by their existing excludes and `profiles/` is protected explicitly (it
+  holds user-created presets that cannot be told apart from the shipped ones). Stale
+  `__pycache__` is cleared too, so a `.pyc` for a removed module can't still be imported.
+- `TC_LAB_SERVICE` and `TC_LAB_BIN_DIR` join `TC_LAB_DIR`/`TC_LAB_UNIT_DIR` as overrides,
+  so the installer can be exercised against a scratch tree without touching a live
+  service or `/usr/local/bin`.
+
 ### Security
 - **Installed files are now owned by root** (`setup.sh` step 6). The unit has no
   `User=`, so the app runs as root, but `rsync -a` preserves the checkout's owner when

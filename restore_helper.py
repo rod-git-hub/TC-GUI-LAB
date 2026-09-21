@@ -6,6 +6,12 @@ TC rules re-applied separately by app.py _init()
 """
 import json, subprocess, sys, time, os
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from bridge_manager import is_foreign_bridge
+except ImportError:                                  # standalone / partial install
+    def is_foreign_bridge(_name): return False
+
 CONF = os.path.join(os.environ.get("TC_LAB_STATE_DIR", "/opt/tc_lab"),
                     "network_config.json")
 
@@ -89,6 +95,11 @@ log(f"  Already live: {live_bridges or 'none'}")
 for br, info in bridges.items():
     if not _safe(br):
         log(f"  Skipping unsafe bridge name: {br!r}")
+        continue
+    # A config saved while Docker/libvirt was installed may still list their
+    # bridges. Their daemons create them; never recreate or touch them here.
+    if is_foreign_bridge(br):
+        log(f"  {br}: skipped — owned by another subsystem")
         continue
     if br not in live_bridges:
         rc, _, err = run(["ip", "link", "add", "name", br, "type", "bridge"])
