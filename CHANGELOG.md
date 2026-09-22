@@ -30,6 +30,20 @@
   bundles, and re-created on restore. They are now excluded from the saved topology and
   skipped by `restore_helper.py`; the UI still lists them, so you can impair one.
 
+### Fixed — UI
+- **The top-bar interface count double-counted bridges.** `b-if` counted every device
+  in `/proc/net/dev` except loopback — physical NICs, VLAN sub-interfaces *and*
+  bridges — while `b-br` counted the bridges again, so a host with 2 NICs, 4 VLANs and
+  2 bridges read "8 ifaces / 2 bridges" and appeared to have ten things. The counts are
+  now disjoint: `b-if` is NICs plus VLAN sub-interfaces (what you can impair directly),
+  `b-br` is bridges, and they sum to the device count. A tooltip spells out the split.
+
+### Changed — tooling
+- **`capture-screenshots.py` now re-encodes each capture** with a 256-colour adaptive
+  palette (`shrink()`), which is what keeps `docs/img` at ~213 KB instead of ~546 KB.
+  That optimisation had been applied by hand once and was silently undone by every
+  regeneration since. Degrades gracefully with a warning if Pillow is absent.
+
 ### Security — systemd confinement
 - **`CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_MODULE`** on the unit.
   Without it the service held all **40** of root's capabilities and used three; the

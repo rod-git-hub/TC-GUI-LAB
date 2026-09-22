@@ -1383,7 +1383,15 @@ async function loadAll(){
   // Count only real interface-level tc entries:
   //   exclude bridge keys (their tc is applied to members, not the bridge itself)
   //   exclude entries where all values are 0 (no actual impairment)
-  document.getElementById('b-if').textContent=`${ifaces.length} iface${ifaces.length!==1?'s':''}`;
+  // Bridges have their own badge, so exclude them here — otherwise the two
+  // badges overlap and "8 ifaces / 2 bridges" reads as 10 things when the host
+  // has 8 devices, 2 of which are the bridges. What is left is what you can
+  // impair directly: physical NICs and VLAN sub-interfaces.
+  const ifCnt=ifaces.filter(i=>!bridges[i]).length;
+  const bIf=document.getElementById('b-if');
+  bIf.textContent=`${ifCnt} iface${ifCnt!==1?'s':''}`;
+  bIf.title=`${ifCnt} interface${ifCnt!==1?'s':''} (physical NICs and VLAN sub-interfaces, `
+           +`excluding ${brCnt} bridge${brCnt!==1?'s':''} and loopback)`;
   document.getElementById('b-br').textContent=`${brCnt} bridge${brCnt!==1?'s':''}`;
   const liveCnt=updateLiveBadge();
   renderTCGrid();

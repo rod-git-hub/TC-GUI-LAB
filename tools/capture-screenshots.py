@@ -34,6 +34,27 @@ SHOTS = [
 ]
 
 
+def shrink(path):
+    """Re-encode a screenshot with an adaptive palette.
+
+    The captures are flat UI with a small colour count, so a 256-colour palette
+    is visually identical at roughly a third of the size. Without this step a
+    regeneration silently triples the weight of docs/img (546K vs 213K at the
+    time of writing), which is a real cost in a repo people clone.
+
+    Skipped with a warning if Pillow is absent — the screenshots are still
+    correct, just larger.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return False
+    with Image.open(path) as im:
+        im.convert("RGB").quantize(colors=256, method=Image.Quantize.MEDIANCUT) \
+          .save(path, optimize=True)
+    return True
+
+
 def find_chromium():
     for exe in ("chromium", "chromium-browser", "google-chrome",
                 "google-chrome-stable"):
@@ -97,8 +118,11 @@ def main():
                 f"--screenshot={out}",
                 f"http://127.0.0.1:{PORT}/{name}.html",
             ], check=True, capture_output=True)
+            raw = out.stat().st_size // 1024
+            shrunk = shrink(out)
             kb = out.stat().st_size // 1024
-            print(f"  {name}  {w}x{h}  {kb} KB")
+            note = f"  ({raw} KB raw)" if shrunk else "  (Pillow absent - not shrunk)"
+            print(f"  {name}  {w}x{h}  {kb} KB{note}")
     finally:
         httpd.shutdown()
         shutil.rmtree(workdir, ignore_errors=True)
