@@ -22,7 +22,7 @@ the workflow are unchanged.
   `sudo tc-lab reset-admin-password` recovery command.
 - **New:** roles are enforced. Existing accounts are all `admin`, so nothing
   changes until you create `user` accounts.
-- **New:** optional container deployment.
+- **New:** the service runs with a capability bounding set and a root-owned install.
 
 New Python dependencies (`flask-wtf`, `flask-limiter`) are installed for you.
 

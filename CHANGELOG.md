@@ -1,5 +1,11 @@
 ## [v9.2] - 2026-09-08
 
+Deployment is **systemd only**. A container deployment was prototyped during this
+cycle and dropped before release: it ran with `--network host` (so no network
+isolation), its security benefit was capability dropping — which the systemd unit
+now does itself — and installing Docker reconfigures host bridging and iptables on a
+machine whose whole job is bridging.
+
 ### Added — user management
 - **Admin-only User Management section** in the dashboard: create accounts, reset any
   user's password, change roles, delete accounts. Hidden entirely from the `user` role,
@@ -45,48 +51,28 @@
   regeneration since. Degrades gracefully with a warning if Pillow is absent.
 
 ### Security — systemd confinement
-- **`CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_MODULE`** on the unit.
-  Without it the service held all **40** of root's capabilities and used three; the
-  other 37 — `CAP_SYS_ADMIN`, `CAP_SYS_PTRACE`, `CAP_DAC_OVERRIDE`, `CAP_SETUID`,
-  `CAP_SYS_BOOT`, `CAP_SYS_RAWIO` among them — were pure blast radius for a Flask app
-  that shells out to iproute2. This is the same confinement the container gets from
-  `cap_drop: ALL` + `NET_ADMIN`/`NET_RAW`, keeping `SYS_MODULE`, which the container
-  cannot have, so a systemd install can still `modprobe 8021q` itself.
+- **`CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW`** on the unit. Without it the
+  service held all **40** of root's capabilities and used two; the other 38 —
+  `CAP_SYS_ADMIN`, `CAP_SYS_PTRACE`, `CAP_DAC_OVERRIDE`, `CAP_SETUID`, `CAP_SYS_BOOT`,
+  `CAP_SYS_RAWIO`, `CAP_SYS_MODULE` among them — were pure blast radius for a Flask app
+  that shells out to iproute2.
 
-  Verified against every privileged operation the app performs — VLAN create/delete,
-  bridge create/delete, member add/remove, interface up/down, `stp_state`, netem
-  (delay, jitter, loss, duplicate, corrupt), HTB rate limiting, qdisc read and removal,
-  all four `ip`/`bridge` reads, `modprobe`, the `net.ipv4.ip_forward` write, and state-
-  file writes with their `chmod`s: 24/24, with negative controls confirming `modprobe`
-  needs `SYS_MODULE` and the sysctl write needs `NET_ADMIN`.
+  `CAP_SYS_MODULE` is excluded on purpose: it permits loading kernel code, which would
+  undo the rest. It is not needed — when `ip link add … type vlan` or
+  `tc qdisc add … htb` needs a module that is not loaded, the kernel loads it itself
+  (`rtnl-link-*` / `sch_*` aliases), whatever the caller's capabilities. The app's
+  explicit `modprobe 8021q` calls now fail harmlessly; nothing depends on them.
 
-  Note the dependency: dropping `CAP_DAC_OVERRIDE` means the app can only write files
-  it owns, which is why `setup.sh` chowns the install to root. The two go together.
+  Validated under exactly this bounding set on a live host, in a throwaway network
+  namespace: VLAN create/delete, bridge create/delete, member add/remove, `stp_state`,
+  netem (delay, jitter, loss, duplicate, corrupt), HTB rate limiting, qdisc read and
+  removal, every `ip`/`bridge` read, the `net.ipv4.ip_forward` write, and kernel
+  autoload of a qdisc module and a link-type module that were not loaded: 29/29.
 
-### Fixed — host prerequisites
-- **`br_netfilter` is no longer recommended, and a protective sysctl drop-in is
-  shipped.** It was listed as a container host prerequisite in five places, but no
-  code has ever needed it: it exists to push *bridged* frames through iptables, the
-  opposite of what an L2 impairment path wants. Installing Docker loads it anyway
-  (defaulting `net.bridge.bridge-nf-call-*` to `1`) *and* sets the iptables `FORWARD`
-  policy to `DROP` — together those stop traffic crossing a lab bridge while the
-  bridge, its members and its qdiscs all still look correctly configured. Removed
-  from `modules-load.d/tc-lab.conf`; new `sysctl.d/tc-lab.conf` pins the three keys
-  to `0` (each prefixed `-`, so the file is inert where the module was never loaded).
-
-### Added — docs
-- **`docs/systemd-and-container.md`** — switching between the two deployments in both
-  directions. Covers the two rules that bite: only one may run at a time (both adopt
-  and re-apply `tc` to the same host interfaces, so `systemctl disable --now tc_lab`
-  first), and the container's volume starts **empty** so nothing carries over from
-  `/opt/tc_lab` — including `network_config.json`, whose loss is invisible until the
-  next reboot, because the live topology survives the switch.
-
-### Changed — container
-- **The state volume's name is pinned to `tc-lab-state`.** Compose was prefixing it
-  with the project directory name, so the real volume was something like
-  `tc-gui-lab_tc-lab-state` and any documented `docker volume` command depended on
-  where you happened to clone.
+  This narrows a compromise; it is not a hard boundary. The process still runs as
+  UID 0 and can write root-owned files wherever the filesystem is writable. Dropping
+  `CAP_DAC_OVERRIDE` means it can only write files it owns, which is why `setup.sh`
+  chowns the install to root — the two go together.
 
 ### Changed — installer
 - **`setup.sh` snapshots before every upgrade** and can undo one:
@@ -141,11 +127,8 @@
 - **Roles enforced end-to-end.** `admin` creates/deletes/modifies interfaces, bridges
   and VLANs (and settings/import); `user` changes impairments (apply/reset tc, profiles,
   labels). The UI hides admin-only controls for `user`; the server returns 403 regardless.
-- **Container deployment** — `Dockerfile` + `docker-compose.yml` running with
-  `--network host`, `cap_drop: ALL` + `NET_ADMIN`/`NET_RAW` only, `no-new-privileges`,
-  read-only rootfs, state on a named volume. `setup.sh`/systemd still supported.
 - `TC_LAB_STATE_DIR` — all writable state (profiles, `*.json`, secret, TLS cert) can be
-  redirected to a mounted volume; defaults to the working directory (no change for
+  relocated, e.g. onto its own mount; defaults to the working directory (no change for
   existing installs).
 - systemd unit gains sandboxing (`ProtectSystem=full`, `NoNewPrivileges`, `PrivateTmp`, …).
 - `requirements.txt` pinned to exact versions; `requirements-dev.txt` + `tests/`.

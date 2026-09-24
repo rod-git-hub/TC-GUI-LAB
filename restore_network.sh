@@ -5,8 +5,8 @@
 # TC rules are re-applied by app.py _init() AFTER this script completes.
 
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
-# State (network_config.json, logs) lives under TC_LAB_STATE_DIR when set
-# (container / custom deploy); otherwise next to this script (systemd install).
+# State (network_config.json, logs) lives under TC_LAB_STATE_DIR when set;
+# otherwise next to this script (the normal systemd install).
 STATE_DIR="${TC_LAB_STATE_DIR:-$SCRIPT_DIR}"
 export TC_LAB_STATE_DIR="$STATE_DIR"
 CONF="${STATE_DIR}/network_config.json"

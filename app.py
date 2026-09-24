@@ -55,8 +55,7 @@ def _security_headers(resp):
     return resp
 
 # All writable state lives under STATE_DIR (default: cwd, i.e. /opt/tc_lab under
-# systemd). The container sets TC_LAB_STATE_DIR to a mounted volume so the rest
-# of the filesystem can stay read-only.
+# systemd). Set TC_LAB_STATE_DIR to move it elsewhere, e.g. onto its own mount.
 STATE_DIR      = Path(os.environ.get("TC_LAB_STATE_DIR", "."))
 PROFILES_DIR   = STATE_DIR / "profiles"
 STATE_FILE     = STATE_DIR / "state.json"

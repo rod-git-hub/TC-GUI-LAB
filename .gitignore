@@ -9,7 +9,7 @@ network_config.json
 labels.json
 restore_network.log
 
-# Local state dir (container / STATE_DIR deployments)
+# Local state dir (TC_LAB_STATE_DIR deployments)
 /state/
 
 # Impairment profiles are shipped defaults; ignore only runtime-added ones?

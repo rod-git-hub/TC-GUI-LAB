@@ -25,14 +25,14 @@ for internet-facing deployment** and by design manipulates the host's live netwo
 | Login | No brute-force protection, timing oracle, open redirect | `5/min` limit, constant-time compare, same-host redirects only |
 | Headers | None | `X-Frame-Options`, `nosniff`, `Referrer-Policy`, HSTS, CSP |
 | Error handling | 500 returned the exception string | Generic message; detail in the log only |
-| Deployment | Unconfined systemd root only | Sandboxed unit **or** container with `NET_ADMIN`/`NET_RAW` only, read-only rootfs |
+| Deployment | Unconfined systemd root (all 40 capabilities); install owned by the cloning user | Sandboxed unit confined to `CAP_NET_ADMIN` + `CAP_NET_RAW`; install owned by root |
 | User management | Hand-edit `users.json` | Admin-only dashboard section; `tc-lab reset-admin-password` for recovery; `users.json` is `0600` |
 
 ## Remaining limitations
 
 | Risk | Severity | Notes |
 |---|---|---|
-| Runs as root | High | Required for `tc`/`ip`/`bridge`. Use the container to bound it to `NET_ADMIN`/`NET_RAW`. |
+| Runs as root | High | Required for `tc`/`ip`/`bridge`. The unit bounds it to 2 capabilities (`NET_ADMIN`, `NET_RAW`) — no module loading, no `ptrace`, no permission overrides. But it still runs as UID 0, and `ProtectSystem=full` leaves `/var` writable, so it can write root-owned files there. Capability bounding narrows a compromise; it is not a hard boundary. Keep it on an isolated lab network. |
 | Built-in WSGI server | Low–Med | Werkzeug's server (threaded). Fine for a single-operator lab on a trusted network; not for many concurrent users. |
 | Self-signed TLS | Low | Encrypts traffic; no identity verification. Import `cert.pem` as a trusted CA, or drop in your own cert/key. |
 | Single-process rate-limit / session store | Low | In-memory; counters reset on restart. Adequate for one instance. |
@@ -40,7 +40,7 @@ for internet-facing deployment** and by design manipulates the host's live netwo
 
 ## Recommended Deployment
 
-- Run the **container** (`docker compose up`) or the **sandboxed systemd unit**.
+- Install with `setup.sh`, which deploys the sandboxed, capability-bounded systemd unit.
 - Set `bind_address` in `config.json` to your management IP; firewall port 5000 to admin
   workstations only.
 - Change the default `admin / tclab123` password on first login.

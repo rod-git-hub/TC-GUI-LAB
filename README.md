@@ -23,7 +23,7 @@ interfaces. Built for Fortinet SD-WAN, SASE, and general network lab testing.
 - Role-based access — **admin** manages interfaces / bridges / VLANs and user accounts,
   **user** changes impairments
 - **User management in the dashboard** (admin-only) + `sudo tc-lab reset-admin-password` recovery
-- Runs under systemd **or** as a hardened container
+- Runs as a sandboxed systemd service, confined to 2 of root's 40 capabilities
 
 ---
 
@@ -59,7 +59,6 @@ logs, upgrade and uninstall — are in **[docs/deployment.md](docs/deployment.md
 
 Open **https://your-server-ip:5000** in your browser.
 
-> Prefer containers? See [Run as a container](#-run-as-a-container-alternative-to-systemd) below.
 > Running the tests: `pip install -r requirements-dev.txt && python -m pytest -q`
 
 > Chrome will warn about the self-signed certificate.
@@ -101,55 +100,26 @@ shows accounts and roles (never hashes).
 
 ---
 
-## 🐳 Run as a container (alternative to systemd)
+## 🔐 How the service is confined
 
-The app has to manage the **host's** real interfaces, so the container shares the host
-network namespace — but runs with only `NET_ADMIN`/`NET_RAW`, `no-new-privileges`, and a
-read-only root filesystem instead of as unconfined host root.
+TC Lab has to run as root — `tc`, `ip` and `bridge` need it — so the systemd unit
+limits what that root can do:
 
-**Host prerequisites** (the container can't load kernel modules itself under host networking):
+| | |
+|---|---|
+| **Capabilities** | `CAP_NET_ADMIN` and `CAP_NET_RAW` only — 2 of root's 40. No `CAP_SYS_ADMIN`, `CAP_SYS_PTRACE`, `CAP_DAC_OVERRIDE`, `CAP_SETUID` or the rest. |
+| **Filesystem** | `ProtectSystem=full`, `ProtectHome=yes`, writable only under `/opt/tc_lab` |
+| **Process** | `NoNewPrivileges`, `PrivateTmp`, `MemoryDenyWriteExecute`, `RestrictSUIDSGID`, … |
+| **Install ownership** | `/opt/tc_lab` is owned by root and not group/other-writable |
 
-```bash
-sudo cp modules-load.d/tc-lab.conf /etc/modules-load.d/
-sudo modprobe 8021q sch_netem
-echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward      # for bridged / routed labs
-```
-
-> ⚠️ **If your bridges carry lab traffic, apply this too.** Installing Docker loads
-> `br_netfilter` (sending *bridged* frames through iptables) and sets the iptables
-> `FORWARD` policy to `DROP` — together they silently stop traffic crossing your
-> bridges, while everything still *looks* correctly configured.
->
-> ```bash
-> sudo cp sysctl.d/tc-lab.conf /etc/sysctl.d/ && sudo sysctl --system
-> ```
-
-**Start:**
+Check it on a running install:
 
 ```bash
-docker compose up -d --build
-# Debian 13: if --build fails on a buildx version error, do it in two steps:
-#   sudo DOCKER_BUILDKIT=0 docker build -t tc-lab:latest . && sudo docker compose up -d
+grep CapEff /proc/$(systemctl show tc_lab -p MainPID --value)/status
 ```
 
-Open **https://your-host-ip:5000** (same default login). State (users, TLS cert, profiles,
-topology) lives in the `tc-lab-state` volume and survives `docker compose down`.
-
-> **Moving an existing systemd install to the container — or back?**
-> The volume starts **empty**: nothing carries over from `/opt/tc_lab` on its own, and
-> only one of the two may run at a time. See
-> **[docs/systemd-and-container.md](docs/systemd-and-container.md)** for the migration
-> steps in both directions.
-
-> **systemd is the tested path.** The container's capabilities and core operations
-> (VLAN, bridge and grouped impairment management under `NET_ADMIN`/`NET_RAW` alone)
-> have been verified, but it has not been run as a long-lived deployment.
-
-| | systemd | Container |
-|---|---|---|
-| Manages host interfaces | yes | yes (`--network host`) |
-| Privileges | unconfined root | root limited to `NET_ADMIN` + `NET_RAW` |
-| Filesystem | read-write | read-only + state volume |
+`0000000000003000` means exactly those two capabilities. Kernel modules such as
+`8021q` and `sch_htb` are still loaded on demand — by the kernel, not by TC Lab.
 
 ---
 
@@ -211,9 +181,8 @@ interfaces. Use "Member controls" to fine-tune individual interfaces.
 - Config-import bundles are fully validated before anything is written or replayed
 - Change the default password immediately
 - Bind to your management IP (`bind_address` in `config.json`) and firewall port 5000
-- The container deployment is more confined — it drops all capabilities except
-  `NET_ADMIN`/`NET_RAW`, adds `no-new-privileges` and a read-only root filesystem —
-  but systemd is the path with production soak time behind it
+- The service runs with 2 of root's 40 capabilities — see
+  [How the service is confined](#-how-the-service-is-confined)
 
 See [SECURITY.md](SECURITY.md) for the security model and known limitations,
 and [docs/users-and-security.md](docs/users-and-security.md) for how accounts,
@@ -232,22 +201,17 @@ tc-lab/
 ├── vlan_manager.py     # 802.1Q VLAN sub-interface management
 ├── ssl_gen.py          # Self-signed TLS certificate generator
 ├── restore_helper.py   # Network restore logic (VLANs → bridges → members)
-├── restore_network.sh  # Called by systemd ExecStartPre / container entrypoint
+├── restore_network.sh  # Called by systemd ExecStartPre
 ├── setup.sh            # systemd installer (deploys to /opt/tc_lab)
 ├── tc_lab.service      # systemd unit (sandboxed)
 ├── cli.py              # `tc-lab` CLI — admin password recovery
 ├── tc-lab              # CLI wrapper, symlinked to /usr/local/bin by setup.sh
-├── Dockerfile          # Container image
-├── docker-compose.yml  # Hardened container deployment
-├── entrypoint.sh       # Container entrypoint (restore + run)
 ├── requirements.txt    # Pinned runtime deps  (requirements-dev.txt adds pytest)
-├── modules-load.d/     # 8021q + sch_netem for container hosts
-├── sysctl.d/           # keeps bridged frames out of iptables (Docker hosts)
 ├── profiles/           # Default JSON impairment profiles (seed data)
 ├── templates/          # HTML templates (index.html, login.html)
 ├── tools/              # ui-preview.py, capture-screenshots.py (dev helpers)
-├── docs/               # deployment, upgrading, users & security, systemd↔container
-├── tests/              # pytest suite (security + user management)
+├── docs/               # deployment, upgrading, users & security, screenshots
+├── tests/              # pytest suite (security, users, managers)
 └── <STATE_DIR>/        # Writable state — defaults to the app dir; set
     ├── config.json         #   TC_LAB_STATE_DIR to move onto a volume.
     ├── network_config.json #   All auto-managed. Never commit these.

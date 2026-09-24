@@ -256,9 +256,9 @@ root shell access on that host.
    sudo nft add rule inet filter input tcp dport 5000 ip saddr != 192.168.10.0/24 drop
    ```
    (or the equivalent `ufw`/`iptables` rule for your setup)
-4. **Use the container deployment** where you can — it bounds the process to
-   `CAP_NET_ADMIN` + `CAP_NET_RAW` on a read-only filesystem, instead of
-   unconfined root.
+4. **Install with `setup.sh`**, which deploys the sandboxed unit: a capability
+   bounding set instead of all of root's capabilities, a read-only view of the
+   system outside `/opt/tc_lab`, and an install directory owned by root.
 5. **Give operators the `user` role**, not `admin`. Create their accounts from
    Users → Create Account; keep the number of admins small.
 6. **Trust the certificate** rather than clicking through the warning every time:
@@ -280,7 +280,7 @@ Honest accounting of what this tool does *not* do.
 
 | Limitation | Impact | Mitigation |
 |---|---|---|
-| Runs as root | a compromise means host control | container deployment; isolated lab network |
+| Runs as root | a compromise means host control | capability-bounded, sandboxed systemd unit; isolated lab network |
 | Werkzeug's built-in server | not built for hostile networks | fine for a single operator on a trusted LAN; put a reverse proxy in front for anything larger |
 | Self-signed certificate | encrypts, but proves no identity | import as trusted, or install a real certificate |
 | No audit trail of *who* did what | applied commands are logged, but not the username | account changes (create/delete/role/password-reset) *are* logged with the username; impairment changes are not |

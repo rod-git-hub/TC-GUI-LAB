@@ -2,7 +2,7 @@
 
 TC Lab is a Flask web app that drives the Linux traffic-control stack. It shells
 out to `tc`, `ip` and `bridge`, so it **must run as root on a Linux host** — there
-is no way around that, but the container option bounds what "root" can do.
+is no way around that, but the systemd unit bounds what that root can do.
 
 > **Deploy it on a dedicated lab machine or VM.** It reconfigures live network
 > interfaces. Never expose port 5000 to an untrusted network.
@@ -46,7 +46,7 @@ Once installed, TC Lab runs fully offline.
 
 ## 2. Installation options
 
-Three supported ways to run it. Pick one.
+Two ways to run it: installed as a service (A), or by hand for development (B).
 
 ### Option A — systemd install (recommended for a dedicated appliance)
 
@@ -87,69 +87,7 @@ Change that password immediately.
 > Your browser will warn about the self-signed certificate — expected. Click
 > **Advanced → Proceed**, or import `/opt/tc_lab/cert.pem` as a trusted authority.
 
-### Option B — container (recommended when you want the privileges bounded)
-
-The container still manages the host's real interfaces (it shares the host
-network namespace), but it runs with **only `CAP_NET_ADMIN` and `CAP_NET_RAW`**
-instead of unconfined root, on a read-only filesystem, with `no-new-privileges`.
-
-Host prerequisites — the container cannot load kernel modules itself:
-
-```bash
-sudo cp modules-load.d/tc-lab.conf /etc/modules-load.d/
-sudo modprobe 8021q sch_netem
-echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
-```
-
-Then:
-
-```bash
-sudo docker compose up -d --build     # build image and start
-sudo docker compose logs -f           # follow logs
-sudo docker compose down              # stop and remove the container
-```
-
-> **Debian 13 note:** if `--build` fails with *"compose build requires buildx
-> 0.17.0 or later"*, Debian's `docker-buildx` is older than the compose plugin
-> expects. Build in one step and start in another:
->
-> ```bash
-> sudo DOCKER_BUILDKIT=0 docker build -t tc-lab:latest .
-> sudo docker compose up -d
-> ```
-
-**What the container can and cannot do.** With `--network host` and
-`CAP_NET_ADMIN`, it manages the host's real interfaces exactly like the systemd
-install — verified: creating 802.1Q sub-interfaces, creating bridges, adding
-members, and applying grouped impairments (including the per-member split) all
-work. The one thing it cannot do is **load kernel modules** (`CAP_SYS_MODULE` is
-dropped), which is why `8021q` and `sch_netem` must be loaded on the host first —
-that is what the `modules-load.d` step above is for.
-
-**Installing Docker changes host networking.** It loads `br_netfilter` — which
-defaults `net.bridge.bridge-nf-call-iptables` to `1`, sending *bridged* frames
-through iptables — and it sets the iptables `FORWARD` policy to `DROP`. On a host
-whose bridges carry lab traffic, those two together stop that traffic: the bridge
-still looks up and correctly configured, packets simply stop crossing it. Install
-the supplied drop-in before or immediately after installing Docker:
-
-```bash
-sudo cp sysctl.d/tc-lab.conf /etc/sysctl.d/ && sudo sysctl --system
-```
-
-It sets the three `bridge-nf-call-*` keys to `0`, keeping bridged frames out of
-iptables entirely. Each key is prefixed with `-` so the file is harmless on a host
-where `br_netfilter` was never loaded.
-
-Running Docker also creates a `docker0` bridge on the host, which will appear in
-TC Lab's bridge list. It is harmless and TC Lab never manages it, but on a
-dedicated appliance where you are using the systemd install, it is tidier not to
-have Docker installed at all.
-
-State (accounts, TLS cert, profiles, topology) lives in the `tc-lab-state`
-Docker volume and survives `down`/`up` and image rebuilds.
-
-### Option C — run it manually (development / one-off)
+### Option B — run it manually (development / one-off)
 
 No install, no service. Runs in the foreground, stops on Ctrl-C.
 
@@ -161,18 +99,18 @@ sudo ./venv/bin/python app.py
 ```
 
 State files are written **into the current directory** rather than `/opt/tc_lab`.
-Use this for development or a quick trial; use A or B for anything lasting.
+Use this for development or a quick trial; use A for anything lasting.
 
 ### Comparison
 
-| | A · systemd | B · container | C · manual |
-|---|---|---|---|
-| Survives reboot | yes | yes (`restart: unless-stopped`) | no |
-| Privileges | unconfined root | root limited to `NET_ADMIN`+`NET_RAW` | unconfined root |
-| Filesystem | read-write | read-only + state volume | read-write |
-| Host prerequisites | apt packages | Docker + kernel modules | Python 3.9+ |
-| Upgrade | re-run `setup.sh` | `compose up -d --build` | `git pull` |
-| Best for | dedicated lab appliance | shared/hardened host | development |
+| | A · systemd | B · manual |
+|---|---|---|
+| Survives reboot | yes | no |
+| Privileges | root bounded to 2 capabilities, sandboxed | unconfined root |
+| Filesystem | read-only outside `/opt/tc_lab` | read-write |
+| Host prerequisites | apt packages (installed for you) | Python 3.9+, iproute2 |
+| Upgrade | re-run `setup.sh` (snapshot + rollback) | `git pull` |
+| Best for | the lab appliance | development |
 
 ---
 
@@ -194,8 +132,7 @@ Use this for development or a quick trial; use A or B for anything lasting.
 | `/opt/tc_lab/restore_network.log` | boot-time topology restore log |
 
 All writable state can be relocated with the **`TC_LAB_STATE_DIR`** environment
-variable — that is how the container keeps its root filesystem read-only. Set it
-in the unit file:
+variable — for example onto its own mount. Set it in the unit file:
 
 ```ini
 Environment=TC_LAB_STATE_DIR=/var/lib/tc_lab
@@ -228,7 +165,7 @@ Changes require a restart:
 sudo systemctl restart tc_lab
 ```
 
-Environment variables (set in the unit file or the container):
+Environment variables (set in the unit file):
 
 | Variable | Effect |
 |---|---|
@@ -288,12 +225,6 @@ journalctl -u tc_lab --since today   # today only
 journalctl -u tc_lab -p err          # errors only
 ```
 
-Container:
-
-```bash
-sudo docker compose logs -f
-```
-
 The one file-based log is `restore_network.log` in the state directory, written
 by the boot-time topology restore. Check it when bridges or VLANs do not come
 back after a reboot.
@@ -347,12 +278,6 @@ A belt-and-braces backup before any upgrade is still cheap:
 sudo cp -a /opt/tc_lab /opt/tc_lab.bak-$(date +%F)
 ```
 
-**Option B (container)**:
-
-```bash
-git pull && sudo docker compose up -d --build
-```
-
 After any upgrade, **hard-refresh the browser** (Ctrl-Shift-R). A cached older
 page can hold a stale CSRF token, and every action then fails with
 *"The CSRF token is missing."*
@@ -385,13 +310,6 @@ sudo tc qdisc del dev <iface> root
 # 5. remove bridges / VLANs it created, if you no longer want them
 sudo ip link del <bridge>
 sudo ip link del <vlan>
-```
-
-Container:
-
-```bash
-sudo docker compose down -v      # -v also deletes the state volume
-sudo docker rmi tc-lab:latest
 ```
 
 The apt packages (`iproute2`, `bridge-utils`, …) are standard system tools —
