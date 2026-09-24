@@ -31,8 +31,9 @@ interfaces. Built for Fortinet SD-WAN, SASE, and general network lab testing.
 
 | Requirement | Version |
 |---|---|
-| Linux | Debian 12 / Ubuntu 22.04 / 24.04 |
-| Python | 3.9 or newer |
+| Linux | Debian 12 / 13, Ubuntu 22.04 / 24.04 — the installer uses `apt` |
+| Init system | systemd |
+| Python | 3.9 or newer (installed for you) |
 | Privileges | Root (required for tc, ip, bridge) |
 
 ---
@@ -47,8 +48,9 @@ cd tc-lab
 sudo bash setup.sh
 ```
 
-Full instructions — all three install methods, configuration, service control,
-logs, upgrade and uninstall — are in **[docs/deployment.md](docs/deployment.md)**.
+Full instructions — installation, configuration, service control, logs and
+uninstall — are in **[docs/deployment.md](docs/deployment.md)**.
+Already running an older version? Follow **[docs/upgrading.md](docs/upgrading.md)**.
 
 `setup.sh` will:
 - Install all dependencies (`requirements.txt`)
@@ -67,6 +69,21 @@ Open **https://your-server-ip:5000** in your browser.
 
 **Default credentials:** `admin` / `tclab123`
 ⚠️ Change your password immediately after first login (Settings → Change Password).
+
+---
+
+## 📚 Documentation
+
+| Document | What it covers |
+|---|---|
+| [RELEASE_NOTES.md](RELEASE_NOTES.md) | What is new in this version, and what to know before upgrading |
+| [docs/deployment.md](docs/deployment.md) | Installation, **configuration** (`config.json`, TLS, installer options), service control, logs, uninstall |
+| [docs/upgrading.md](docs/upgrading.md) | **Upgrading** from v9.x, verifying, and rolling back |
+| [docs/users-and-security.md](docs/users-and-security.md) | Accounts, roles, password handling, hardening |
+| [SECURITY.md](SECURITY.md) | Security model, fixes, and known limitations |
+| [CHANGELOG.md](CHANGELOG.md) | Detailed change history, every version |
+
+On the host, `tc-lab --help` lists the administration commands.
 
 ---
 
@@ -120,6 +137,38 @@ grep CapEff /proc/$(systemctl show tc_lab -p MainPID --value)/status
 
 `0000000000003000` means exactly those two capabilities. Kernel modules such as
 `8021q` and `sch_htb` are still loaded on demand — by the kernel, not by TC Lab.
+
+---
+
+## 🐳 Docker / containers
+
+**Not supported.** TC Lab installs and runs as a systemd service only; there is no
+container image. A container build was prototyped during v9.2 and dropped before
+release, for three reasons:
+
+- **There is nothing for a container to isolate.** TC Lab's whole job is to change
+  the *host's* real interfaces, so a container would have to share the host's
+  network (`--network host`). It gets no network isolation.
+- **Its one real benefit is already here.** Containers are safer mainly because
+  they drop root's capabilities. The systemd unit does that itself — down to the
+  same two a container would keep ([details](#-how-the-service-is-confined)).
+- **Installing Docker changes the host networking TC Lab depends on.** Docker loads
+  `br_netfilter`, which sends *bridged* frames through iptables, and sets the
+  iptables `FORWARD` policy to `DROP`. On a machine whose job is bridging lab
+  traffic, that can silently stop traffic crossing your bridges while everything
+  still looks correctly configured.
+
+If Docker is already on the host for something else, TC Lab ignores its bridges
+(`docker0`, `br-…`) — they never enter saved topology or config exports. Check
+whether bridged traffic is being filtered:
+
+```bash
+sysctl net.bridge.bridge-nf-call-iptables
+```
+
+`1` means it is. `sudo sysctl -w net.bridge.bridge-nf-call-iptables=0` stops it
+(add it to a file in `/etc/sysctl.d/` to survive a reboot). If the key does not
+exist, `br_netfilter` is not loaded and there is nothing to do.
 
 ---
 
@@ -207,6 +256,8 @@ tc-lab/
 ├── cli.py              # `tc-lab` CLI — admin password recovery
 ├── tc-lab              # CLI wrapper, symlinked to /usr/local/bin by setup.sh
 ├── requirements.txt    # Pinned runtime deps  (requirements-dev.txt adds pytest)
+├── RELEASE_NOTES.md    # What's new in this version, upgrade notes
+├── CHANGELOG.md        # Full change history
 ├── profiles/           # Default JSON impairment profiles (seed data)
 ├── templates/          # HTML templates (index.html, login.html)
 ├── tools/              # ui-preview.py, capture-screenshots.py (dev helpers)

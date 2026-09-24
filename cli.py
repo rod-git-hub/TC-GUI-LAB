@@ -8,7 +8,8 @@ password, because passwords are stored only as one-way bcrypt hashes.
 
     sudo tc-lab reset-admin-password
     sudo tc-lab list-users
-    sudo tc-lab --help
+    tc-lab --help
+    tc-lab --version
 
 Run from the install directory, or set TC_LAB_STATE_DIR to point at the
 directory holding users.json.
@@ -159,21 +160,70 @@ def cmd_list_users(args):
     return EXIT_OK
 
 
+def _version():
+    """The version string lives in app.py's first line ("app.py v9.2"); read it
+    rather than keep a second copy that could drift."""
+    try:
+        first = (Path(__file__).parent / "app.py").read_text().splitlines()[0]
+        return first.strip('"').split()[-1]
+    except (OSError, IndexError):
+        return "unknown"
+
+
+HELP = """\
+TC Lab command-line administration.
+
+For an administrator with a shell on the host, mainly for the case where the
+dashboard admin password has been lost. Passwords are stored only as one-way
+bcrypt hashes, so this tool can *reset* the admin password but can never read
+or display any password.
+"""
+
+EPILOG = """\
+examples:
+  sudo tc-lab reset-admin-password     set a new admin password (prompted, not echoed)
+  sudo tc-lab list-users               show accounts and their roles
+  sudo tc-lab list-users --json        the same, machine-readable
+  tc-lab --version                     show the installed version
+
+related:
+  sudo systemctl status tc_lab         is the service running?
+  journalctl -u tc_lab -n 100          recent service log
+  sudo bash setup.sh --list-backups    snapshots taken before each upgrade
+  sudo bash setup.sh --rollback        undo the last upgrade (code and state)
+
+Accounts are managed day to day from the dashboard's Users section (admin only).
+Documentation: docs/deployment.md, docs/upgrading.md, docs/users-and-security.md
+"""
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
-        prog="tc-lab", description=__doc__.split("\n\n")[1],
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Passwords can only be reset, never displayed.")
+        prog="tc-lab", description=HELP, epilog=EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("-V", "--version", action="version",
+                   version=f"tc-lab (TC Lab) {_version()}")
     sub = p.add_subparsers(dest="command", metavar="<command>")
 
-    r = sub.add_parser("reset-admin-password",
-                       help="reset the dashboard admin password (root only)")
+    r = sub.add_parser(
+        "reset-admin-password",
+        help="reset the dashboard admin password (root only)",
+        description=(
+            "Set a new password for the 'admin' account.\n\n"
+            "Must run as root. Prompts twice without echoing and applies the same\n"
+            "password rules as the dashboard (8 characters minimum, 72 bytes maximum).\n"
+            "Backs up users.json first, changes ONLY the admin account (recreating it\n"
+            "if it was deleted), and verifies the new password before reporting\n"
+            "success. Other accounts and their passwords are not touched."),
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     # Hidden, for automated provisioning; interactive use should omit it so the
     # password never lands in the shell history or the process list.
     r.add_argument("--password", help=argparse.SUPPRESS)
     r.set_defaults(func=cmd_reset_admin_password)
 
-    l = sub.add_parser("list-users", help="list accounts and roles (no hashes)")
+    l = sub.add_parser(
+        "list-users", help="list accounts and roles (no hashes)",
+        description="List every dashboard account and its role. Password hashes are never shown.")
     l.add_argument("--json", action="store_true", help="machine-readable output")
     l.set_defaults(func=cmd_list_users)
 

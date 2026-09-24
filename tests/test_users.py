@@ -271,3 +271,29 @@ def test_cli_has_no_command_that_reveals_a_password():
     help_text = buf.getvalue().lower()
     for forbidden in ("show-password", "get-password", "reveal", "dump-hash", "print-password"):
         assert forbidden not in help_text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI help and version
+# ─────────────────────────────────────────────────────────────────────────────
+def test_cli_version_matches_app(capsys):
+    """--version is read from app.py, so it can never drift from the app."""
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--version"])
+    assert e.value.code == 0
+    first = open(os.path.join(os.path.dirname(cli.__file__), "app.py")).readline()
+    assert first.strip().strip('"').split()[-1] in capsys.readouterr().out
+
+
+def test_cli_help_lists_commands_and_never_offers_to_show_a_password(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["--help"])
+    out = capsys.readouterr().out
+    for word in ("reset-admin-password", "list-users", "--version", "--rollback"):
+        assert word in out
+    assert "--password" not in out           # the provisioning flag stays hidden
+
+
+def test_cli_no_arguments_prints_help(capsys):
+    assert cli.main([]) == cli.EXIT_OK
+    assert "reset-admin-password" in capsys.readouterr().out

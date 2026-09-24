@@ -47,6 +47,7 @@ Once installed, TC Lab runs fully offline.
 ## 2. Installation options
 
 Two ways to run it: installed as a service (A), or by hand for development (B).
+There is no container option — see [why Docker is not offered](../README.md#-docker--containers).
 
 ### Option A — systemd install (recommended for a dedicated appliance)
 
@@ -172,6 +173,56 @@ Environment variables (set in the unit file):
 | `TC_LAB_STATE_DIR` | directory for all writable state (default: working directory) |
 | `TC_LAB_SKIP_RESTORE` | start without rebuilding topology or re-applying `tc`. **Only** for a second instance on a host whose interfaces another process owns — never for the real service |
 
+`setup.sh` never overwrites `config.json` on an upgrade — it writes one only when
+none exists.
+
+### TLS certificate
+
+On first start TC Lab generates a self-signed certificate for `localhost`,
+`tc-lab.local`, `127.0.0.1` and the host's IP addresses, and keeps it across
+upgrades. To use your own certificate instead:
+
+```bash
+sudo install -m 644 -o root -g root your-cert.pem /opt/tc_lab/cert.pem
+```
+
+```bash
+sudo install -m 600 -o root -g root your-key.pem /opt/tc_lab/key.pem
+```
+
+```bash
+sudo systemctl restart tc_lab
+```
+
+To generate a fresh self-signed one — for example after changing the host's IP —
+delete both files and restart; a new pair is created on start.
+
+### Installer options
+
+```bash
+sudo bash setup.sh --help
+```
+
+| Flag | Effect |
+|---|---|
+| `--keep-users` | never prompt; keep existing accounts |
+| `--reset-users` | never prompt; delete accounts (a backup is written first) |
+| `--no-backup` | skip the pre-upgrade snapshot (rollback is then impossible) |
+| `--list-backups` | list the snapshots available to roll back to |
+| `--rollback [NAME]` | restore the newest snapshot, or the named one |
+
+| Environment variable | Default | Effect |
+|---|---|---|
+| `TC_LAB_DIR` | `/opt/tc_lab` | where to install |
+| `TC_LAB_BACKUP_DIR` | `/var/backups/tc-lab` | where snapshots are kept |
+| `TC_LAB_KEEP_BACKUPS` | `5` | how many snapshots to keep |
+| `TC_LAB_SERVICE` | `tc_lab` | systemd service name |
+| `TC_LAB_UNIT_DIR` | `/etc/systemd/system` | where the unit file is written |
+| `TC_LAB_BIN_DIR` | `/usr/local/bin` | where the `tc-lab` command is linked |
+
+The installer supports **Debian and Ubuntu** (it uses `apt`) and exits with a
+clear message elsewhere.
+
 ---
 
 ## 5. Running it
@@ -272,20 +323,24 @@ sudo bash setup.sh --reset-users     # never prompt, wipe accounts
 
 With no TTY and no flag it defaults to **keeping** accounts and says so.
 
-A belt-and-braces backup before any upgrade is still cheap:
-
-```bash
-sudo cp -a /opt/tc_lab /opt/tc_lab.bak-$(date +%F)
-```
+Before changing anything, `setup.sh` snapshots the whole install — code **and**
+state — to `/var/backups/tc-lab/` and keeps the five most recent. Files that are no
+longer shipped are removed during the upgrade; your state files and your own
+profiles are kept.
 
 After any upgrade, **hard-refresh the browser** (Ctrl-Shift-R). A cached older
 page can hold a stale CSRF token, and every action then fails with
 *"The CSRF token is missing."*
 
-Rolling back = restoring the backup directory and restarting.
+To undo an upgrade:
 
-> Migrating an existing v9.x install to v9.2 has extra steps —
-> see [upgrading.md](upgrading.md).
+```bash
+sudo bash setup.sh --rollback
+```
+
+A rollback restores **state as well as code** — changes made after the upgrade
+are undone. See [upgrading.md](upgrading.md#rolling-back) for the details, and
+for the full v9.1 → v9.2 walk-through.
 
 ---
 
@@ -301,8 +356,10 @@ sudo systemctl daemon-reload
 sudo tar czf ~/tc_lab-state.tgz -C /opt/tc_lab \
   users.json config.json state.json network_config.json labels.json profiles
 
-# 3. remove the application
+# 3. remove the application, its command and its upgrade snapshots
 sudo rm -rf /opt/tc_lab
+sudo rm -f /usr/local/bin/tc-lab
+sudo rm -rf /var/backups/tc-lab
 
 # 4. clear any impairments still in the kernel (per interface)
 sudo tc qdisc del dev <iface> root

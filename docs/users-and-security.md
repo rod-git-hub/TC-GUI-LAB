@@ -247,13 +247,14 @@ root shell access on that host.
 1. **Change the default password** on first login.
 2. **Bind to the management interface only.** In `config.json`:
    ```json
-   { "bind_address": "192.168.10.5" }
+   { "bind_address": "192.0.2.10" }
    ```
+   (`192.0.2.x` is a documentation-only range — use your own management IP.)
    Otherwise the UI listens on every interface — including the lab NICs.
 3. **Firewall the port** to your admin workstations:
    ```bash
    sudo apt install -y nftables
-   sudo nft add rule inet filter input tcp dport 5000 ip saddr != 192.168.10.0/24 drop
+   sudo nft add rule inet filter input tcp dport 5000 ip saddr != 192.0.2.0/24 drop
    ```
    (or the equivalent `ufw`/`iptables` rule for your setup)
 4. **Install with `setup.sh`**, which deploys the sandboxed unit: a capability
