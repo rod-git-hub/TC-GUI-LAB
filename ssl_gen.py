@@ -3,7 +3,7 @@ ssl_gen.py — self-signed TLS cert with SAN (Chrome-compatible)
 Chrome requirements: SAN present, SHA-256, RSA>=2048, validity <=398 days.
 Regenerates automatically if cert is missing or expires within 30 days.
 """
-import datetime, ipaddress, json, logging, subprocess
+import datetime, ipaddress, json, logging, os, subprocess
 from pathlib import Path
 from cryptography import x509
 from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
@@ -11,8 +11,9 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 
-CERT_FILE     = Path("cert.pem")
-KEY_FILE      = Path("key.pem")
+_SD           = Path(os.environ.get("TC_LAB_STATE_DIR", "."))
+CERT_FILE     = _SD / "cert.pem"
+KEY_FILE      = _SD / "key.pem"
 VALIDITY_DAYS = 397          # Chrome hard limit is 398
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ def _needs_regen():
 
 def ensure_cert():
     """Generate cert + key if missing or expiring. Returns (cert_path, key_path)."""
+    _SD.mkdir(parents=True, exist_ok=True)
     if not _needs_regen():
         return str(CERT_FILE), str(KEY_FILE)
 
@@ -62,7 +64,7 @@ def ensure_cert():
         [x509.IPAddress(ipaddress.IPv4Address(ip)) for ip in ips])
 
     subject = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME,        "TC Lab v8"),
+        x509.NameAttribute(NameOID.COMMON_NAME,        "TC Lab"),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME,  "TC Lab Self-Signed"),
     ])
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -95,3 +97,12 @@ def ensure_cert():
     logger.info(">>> To avoid Chrome warning: chrome://settings/certificates")
     logger.info("    Authorities tab -> Import cert.pem -> Trust for HTTPS")
     return str(CERT_FILE), str(KEY_FILE)
+
+
+if __name__ == "__main__":
+    # Allows `python ssl_gen.py` to pre-generate the certificate at install
+    # time. Without this the module only defined functions and did nothing,
+    # so the cert was silently deferred to the app's first start.
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    cert, key = ensure_cert()
+    print(f"cert: {cert}\nkey:  {key}")

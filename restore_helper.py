@@ -6,7 +6,14 @@ TC rules re-applied separately by app.py _init()
 """
 import json, subprocess, sys, time, os
 
-CONF = "/opt/tc_lab/network_config.json"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from bridge_manager import is_foreign_bridge
+except ImportError:                                  # standalone / partial install
+    def is_foreign_bridge(_name): return False
+
+CONF = os.path.join(os.environ.get("TC_LAB_STATE_DIR", "/opt/tc_lab"),
+                    "network_config.json")
 
 def log(msg):
     print(msg, flush=True)
@@ -14,6 +21,17 @@ def log(msg):
 def run(cmd):
     r = subprocess.run(cmd, capture_output=True, text=True)
     return r.returncode, r.stdout.strip(), r.stderr.strip()
+
+_VALID = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
+def _safe(s):
+    """Defence in depth: network_config.json is validated by app.py's
+    _sanitize_bundle on import, but this script also runs standalone from
+    systemd, so re-check every name before it reaches `ip`. First char must be
+    alphanumeric so a name can't be read as a `-flag`."""
+    s = str(s)
+    if not s or len(s) > 20 or s[0] in ".-":
+        return False
+    return all(c in _VALID for c in s.lower())
 
 def get_live(obj_type):
     rc, out, _ = run(["ip", "-j", "link", "show", "type", obj_type])
@@ -49,6 +67,9 @@ for v in vlans:
     if not name or not parent or not vid:
         log(f"  Skipping invalid entry (missing name/parent/vid): {v}")
         continue
+    if not _safe(name) or not _safe(parent):
+        log(f"  Skipping unsafe VLAN entry: name={name!r} parent={parent!r}")
+        continue
     try:
         vid = int(vid)
     except:
@@ -72,6 +93,14 @@ live_bridges = get_live("bridge")
 log(f"  Already live: {live_bridges or 'none'}")
 
 for br, info in bridges.items():
+    if not _safe(br):
+        log(f"  Skipping unsafe bridge name: {br!r}")
+        continue
+    # A config saved while Docker/libvirt was installed may still list their
+    # bridges. Their daemons create them; never recreate or touch them here.
+    if is_foreign_bridge(br):
+        log(f"  {br}: skipped — owned by another subsystem")
+        continue
     if br not in live_bridges:
         rc, _, err = run(["ip", "link", "add", "name", br, "type", "bridge"])
         if rc == 0:
@@ -93,6 +122,9 @@ for br, info in bridges.items():
         live_members = set()
 
     for iface in info.get("members", []):
+        if not _safe(iface):
+            log(f"    Skipping unsafe member name: {iface!r}")
+            continue
         if iface in live_members:
             log(f"    {iface}: already member of {br}")
             continue

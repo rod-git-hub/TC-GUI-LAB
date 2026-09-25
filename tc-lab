@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# TC Lab CLI wrapper — installed to /usr/local/bin/tc-lab by setup.sh.
+# Runs cli.py with the application's own virtualenv so bcrypt is available,
+# and points it at the same state directory the service uses.
+set -euo pipefail
+
+INSTALL_DIR="${TC_LAB_DIR:-/opt/tc_lab}"
+PY="${INSTALL_DIR}/venv/bin/python"
+
+[ -x "$PY" ] || PY="$(command -v python3)"
+[ -f "${INSTALL_DIR}/cli.py" ] || {
+  echo "error: TC Lab not found at ${INSTALL_DIR}" >&2
+  echo "       set TC_LAB_DIR=/path/to/tc_lab if it is installed elsewhere" >&2
+  exit 1
+}
+
+# Match the service's state directory unless the caller overrode it.
+export TC_LAB_STATE_DIR="${TC_LAB_STATE_DIR:-$INSTALL_DIR}"
+
+cd "$INSTALL_DIR"
+exec "$PY" "${INSTALL_DIR}/cli.py" "$@"

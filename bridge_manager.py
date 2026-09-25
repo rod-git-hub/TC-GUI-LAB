@@ -1,7 +1,18 @@
-import subprocess,json as _json,os as _os,logging
+import subprocess,json as _json,os as _os,logging,re as _re
 logger=logging.getLogger(__name__)
 def _run(cmd):
     r=subprocess.run(cmd,capture_output=True,text=True); return r.returncode,r.stdout,r.stderr
+
+# Bridges owned by another subsystem. The UI still lists them (you may want to
+# impair one), but they are never written to network_config.json and never
+# recreated on restore: they belong to Docker/libvirt/LXC, which make their own
+# on start, and a bundle that tried to recreate docker0 would fight the daemon.
+_FOREIGN_BRIDGE = _re.compile(
+    r"^(docker\d+|br-[0-9a-f]{12}|virbr\d+(-nic)?|lxcbr\d+|podman\d+|cni-podman\d+)$")
+
+def is_foreign_bridge(name):
+    """True for a bridge another daemon owns (docker0, virbr0, ...)."""
+    return bool(_FOREIGN_BRIDGE.match(str(name)))
 def _bridges_via_ip():
     rc,out,_=_run(["ip","-j","link","show","type","bridge"]); bridges={}
     if rc!=0 or not out.strip(): return bridges

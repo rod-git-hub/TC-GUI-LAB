@@ -1,3 +1,124 @@
+## [v9.2] - 2026-09-24
+
+A security, confinement, UI and account-management release. The impairment engine
+and the day-to-day workflow are unchanged. Deployment is **systemd only, on Debian
+or Ubuntu** — see *Removed*. Upgrade notes: [docs/upgrading.md](docs/upgrading.md).
+
+### Security
+- **Arbitrary file write as root, via config import — fixed** (`_sanitize_bundle`).
+  Profile names in an imported bundle were used as file paths unchecked, so a crafted
+  "lab config" could write attacker-controlled JSON anywhere root could reach. Every
+  name and id in a bundle is now validated before anything is written or replayed,
+  and the whole bundle is rejected on any violation. Rejected values echoed back in
+  the error message are truncated.
+- **Stored XSS — fixed.** Profile names and every kernel-supplied string are
+  HTML-escaped (`esc()`) before entering the DOM.
+- **Argument injection — fixed.** A name can no longer start with `-` or `.`, so it can
+  never be read as a flag by `ip`/`tc`. `restore_helper.py` re-checks every name.
+- **Open redirect after login — fixed** (`_safe_next`). Only same-host paths are
+  accepted, and backslashes and control characters are rejected outright: browsers
+  follow the WHATWG URL rules, reading `\` as `/` and stripping tab/CR/LF, so
+  `/\evil.example` would otherwise reach the browser as `//evil.example`.
+- **CSRF protection** (Flask-WTF) on every state-changing request. The dashboard sends
+  `X-CSRFToken`; the login form carries a hidden token and a strict Referer check.
+- **Cookies** are `Secure` + `HttpOnly` + `SameSite=Strict`, with a 12-hour lifetime.
+  Request bodies are capped at 512 KB.
+- **Security headers** on every response: `X-Frame-Options: DENY`, `nosniff`,
+  `Referrer-Policy`, HSTS and a Content-Security-Policy.
+- **Login brute-force protection:** `5/min` on `/login`, `10/min` on change-password.
+  Login timing is the same whether or not the username exists.
+- **Capability confinement.** The unit sets
+  `CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW`: the service used to hold all
+  **40** of root's capabilities and uses two. `CAP_SYS_MODULE` is excluded on purpose
+  — it permits loading kernel code — and is not needed: when `ip` or `tc` asks for a
+  module that is not loaded (`8021q`, `sch_htb`, …) the kernel loads it itself. This
+  narrows a compromise rather than preventing one: the service still runs as UID 0.
+- **Root-owned install.** `setup.sh` now chowns `/opt/tc_lab` to root and removes
+  group/other write. `rsync -a` run as root preserves the checkout's owner, so
+  `git clone && sudo bash setup.sh` used to leave root-executed code writable by the
+  unprivileged user who cloned it.
+- **Sandboxed unit:** `ProtectSystem=full`, `ProtectHome`, `NoNewPrivileges`,
+  `PrivateTmp`, `MemoryDenyWriteExecute`, `RestrictSUIDSGID` and more.
+- `users.json` is written mode `0600` (bcrypt hashes were world-readable).
+- 500 responses no longer leak the exception text to the client.
+
+### Added
+- **User management in the dashboard** (admin only): create accounts, reset any
+  password, change roles, delete accounts. Every `/api/users*` route is
+  `@admin_required`, and responses never contain password hashes. Guard rails: you
+  cannot delete your own account, drop your own admin role, or delete/demote the last
+  admin. Account changes are logged with the username.
+- **Roles enforced end to end.** `admin` manages interfaces, bridges, VLANs, settings,
+  import and accounts; `user` changes impairments, profiles and labels. The server
+  returns 403 regardless of what the page shows.
+- **`tc-lab` command**, linked to `/usr/local/bin` by `setup.sh`:
+  `sudo tc-lab reset-admin-password` (root only; prompts twice without echo, applies
+  the dashboard's password rules, backs up the store, changes only `admin` —
+  recreating it if deleted — and verifies before reporting success),
+  `tc-lab list-users [--json]`, `tc-lab --help` and `tc-lab --version`. No command
+  can display a password.
+- **One password policy** shared by the dashboard, the self-service form and the CLI:
+  8 characters minimum, 72 bytes maximum (bcrypt silently truncates beyond 72).
+- **Installer snapshots and rollback.** Every upgrade snapshots the whole install —
+  code *and* state — to `/var/backups/tc-lab` (five kept). `--list-backups` and
+  `--rollback [NAME]` undo an upgrade; restores are staged and checked before
+  anything is overwritten.
+- `config.json` `port` setting (default `5000`).
+- `TC_LAB_STATE_DIR` — relocate all writable state (default: the working directory).
+- `TC_LAB_SKIP_RESTORE=1` — start a second instance without touching the host's
+  topology or `tc` rules.
+- Installer overrides: `TC_LAB_DIR`, `TC_LAB_UNIT_DIR`, `TC_LAB_BACKUP_DIR`,
+  `TC_LAB_KEEP_BACKUPS`, `TC_LAB_SERVICE`, `TC_LAB_BIN_DIR`.
+- Documentation: `docs/deployment.md`, `docs/upgrading.md`,
+  `docs/users-and-security.md` and `RELEASE_NOTES.md`.
+- A test suite (`tests/`, 128 cases) and pinned dependencies
+  (`requirements.txt`, `requirements-dev.txt`).
+
+### Changed
+- **The UI is redesigned** — same features, same workflow. A top bar and left
+  sidebar replace the tab strip; dark and light themes; an inline SVG icon set
+  replaces emoji (no external assets, works offline); impairment fields show their
+  units. The top-bar counts are now disjoint: interfaces (NICs and VLAN
+  sub-interfaces) and bridges, which sum to the device count.
+- **`setup.sh` is safe to re-run over a live install.** It asks before touching
+  accounts (keeps them by default; `--keep-users` / `--reset-users` for unattended
+  runs), never overwrites `config.json`, the TLS certificate or saved state, and
+  installs the tracked `tc_lab.service` — the old inline unit had silently dropped
+  both the sandboxing and the boot-time topology restore.
+- **Upgrades remove files that are no longer shipped** (`rsync --delete`). State and
+  user-created profiles are protected; stale `__pycache__` is cleared.
+- The installer requires `apt` (Debian/Ubuntu) and says so plainly elsewhere, and
+  works under `sudo -E` (it restores `/usr/sbin` to `PATH` for `ip`/`tc`/`bridge`).
+- `config.json` is no longer shipped in the repository; `setup.sh` writes a default
+  on first install and the app works without one.
+- `capture-screenshots.py` re-encodes captures with an adaptive palette, keeping
+  `docs/img` small across regenerations.
+
+### Fixed
+- **VLANs could vanish from exports.** `ip -j` omits `linkinfo` for a VLAN that is a
+  bridge member, and the name-parse fallback only works for dotted names — so a
+  VLAN that was both a bridge member and non-dotted (e.g. `wan1`) was silently
+  dropped from every export and restore. Now falls back to the kernel's registry,
+  `/proc/net/vlan/config`. Latent since v9.1.
+- **Other software's bridges are no longer captured.** `docker0`, Docker's
+  `br-<hex>` networks, `virbr*`, `lxcbr*` and `podman*` were saved into the topology,
+  exported, and recreated on restore. They are now skipped; the UI still lists them.
+- The installer's certificate step did nothing (`ssl_gen.py` had no `__main__`
+  entry point).
+- `loadAll()` referenced an out-of-scope variable and aborted the dashboard's start-up
+  sequence part-way.
+- The Reload buttons on the Interfaces and Bridge Manager sections could replace
+  their own icon with text.
+
+### Removed
+- **Container deployment.** A Docker build was prototyped during this cycle and
+  dropped before release. It needed `--network host`, so it offered no network
+  isolation; its security benefit — dropping capabilities — the systemd unit now
+  provides itself; and installing Docker loads `br_netfilter` and sets the iptables
+  `FORWARD` policy to `DROP`, which can silently stop traffic across the bridges this
+  tool manages. It was never part of a release.
+- `bridge_setup.sh`, an unused helper superseded by the Bridge Manager.
+
 ## [v9.1] - 2026-05-14
 
 ### Fixed

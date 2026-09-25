@@ -5,10 +5,34 @@ def _run(cmd):
     r = subprocess.run(cmd, capture_output=True, text=True)
     return r.returncode, r.stdout, r.stderr
 
+def _proc_vlan_ids(path="/proc/net/vlan/config"):
+    """{ifname: vlan_id} straight from the 8021q module's own registry.
+
+    Last-resort fallback for list_vlan_interfaces(). `ip -j link show type vlan`
+    omits linkinfo entirely for a VLAN that is a bridge member (confirmed on
+    Debian 13 / iproute2 6.x — info_kind and info_data are both absent), and the
+    name-parse fallback only works for dotted names. A VLAN that was *both* a
+    bridge member *and* non-dotted therefore had no resolvable id and was
+    dropped, silently taking it out of every config export.
+    """
+    ids = {}
+    try:
+        with open(path) as fh:
+            for line in fh:
+                parts = [p.strip() for p in line.split("|")]
+                # Real rows are "name | vid | parent"; the two header lines are not.
+                if len(parts) >= 2 and parts[1].isdigit():
+                    ids[parts[0]] = int(parts[1])
+    except OSError as e:
+        # Absent when 8021q is not loaded — in which case there are no VLANs.
+        logger.debug("/proc/net/vlan/config unreadable: %s", e)
+    return ids
+
 def list_vlan_interfaces():
     rc, out, _ = _run(["ip", "-j", "link", "show", "type", "vlan"])
     if rc != 0 or not out.strip(): return []
     vlans = []
+    proc_ids = None
     try:
         for l in _json.loads(out):
             n = l.get("ifname", ""); f = l.get("flags", [])
@@ -17,6 +41,11 @@ def list_vlan_interfaces():
             if id_ is None and "." in n:
                 try: id_ = int(n.rsplit(".", 1)[-1])
                 except: pass
+            # Fallback: the kernel's VLAN registry — works for bridge members
+            # and non-dotted names alike. Read once, only if something needs it.
+            if id_ is None:
+                if proc_ids is None: proc_ids = _proc_vlan_ids()
+                id_ = proc_ids.get(n)
             if id_ is None:
                 logger.warning("Cannot determine VLAN ID for %s, skipping", n)
                 continue
@@ -84,7 +113,10 @@ def create_vlan(parent, vlan_id, name=""):
     _run(["ip", "link", "set", parent, "up"])
     rc, _, err = _run(["ip", "link", "add", "link", parent,
                         "name", name, "type", "vlan", "id", str(vlan_id)])
-    if rc != 0: return {"ok": False, "stderr": err}
+    if rc != 0:
+        if "not supported" in err.lower():
+            err += "  (is the 8021q kernel module loaded on the host?)"
+        return {"ok": False, "stderr": err}
     rc2, _, err2 = _run(["ip", "link", "set", name, "up"])
     return {"ok": rc2 == 0, "stderr": err2, "name": name}
 

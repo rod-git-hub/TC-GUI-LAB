@@ -1,0 +1,47 @@
+# ── Runtime state & secrets (created on first run — never commit) ──
+users.json
+config.json
+secret_key.txt
+cert.pem
+key.pem
+state.json
+network_config.json
+labels.json
+restore_network.log
+
+# Local state dir (TC_LAB_STATE_DIR deployments)
+/state/
+
+# Impairment profiles are shipped defaults; ignore only runtime-added ones?
+# (kept tracked — see profiles/)
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# ── Editor / OS ──
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# UI design preview (tools/ui-preview.py)
+_preview.html
+
+# AI assistant / agent files — local working files, never shipped
+CLAUDE.md
+CLAUDE.local.md
+**/CLAUDE.md
+AGENTS.md
+**/AGENTS.md
+GEMINI.md
+.claude/
+.cursor/
+.cursorrules
+.windsurfrules
+.aider*
+.github/copilot-instructions.md

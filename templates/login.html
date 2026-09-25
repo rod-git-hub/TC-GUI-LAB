@@ -2,47 +2,143 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>TC Lab v8 — Login</title>
+<title>Sign in · TC Lab</title>
 <style>
+:root{
+  --bg:#0E1116; --surface:#151A21; --surface-2:#1B222B;
+  --border:#242C36; --border-2:#323C4A;
+  --text:#E8ECF2; --text-2:#98A3B3; --text-3:#6C7889;
+  --brand:#DA291C; --accent:#14B8A6; --green:#22C55E; --danger:#EF4444;
+  --danger-soft:rgba(239,68,68,.14); --green-soft:rgba(34,197,94,.14);
+  --amber-soft:rgba(245,158,11,.14); --amber:#F59E0B;
+  --ring:0 0 0 3px rgba(20,184,166,.28);
+}
+[data-theme="light"]{
+  --bg:#F5F7FA; --surface:#FFFFFF; --surface-2:#F7F9FB;
+  --border:#E3E8EF; --border-2:#CBD5E1;
+  --text:#0F172A; --text-2:#556070; --text-3:#818C9B;
+  --brand:#C41E10; --accent:#0D9488; --green:#16A34A; --danger:#DC2626;
+  --danger-soft:rgba(220,38,38,.09); --green-soft:rgba(22,163,74,.10);
+  --amber-soft:rgba(180,83,9,.10); --amber:#B45309;
+  --ring:0 0 0 3px rgba(13,148,136,.20);
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0f1117;color:#e0e0e0;font-family:"Segoe UI",system-ui,sans-serif;
-     display:flex;align-items:center;justify-content:center;min-height:100vh}
-.box{background:#1a1d27;border:1px solid #2a2d3e;border-radius:14px;
-     padding:34px 38px;width:340px;box-shadow:0 8px 40px #000a}
-.logo{text-align:center;font-size:2.2rem;margin-bottom:6px}
-h2{text-align:center;color:#00d4ff;font-size:1.1rem;margin-bottom:22px;font-weight:700}
-label{display:block;color:#7a7f94;font-size:.75rem;margin-bottom:3px;margin-top:14px}
-input[type=text],input[type=password]{width:100%;background:#11141e;border:1px solid #2a2d3e;
-  color:#e0e0e0;padding:9px 12px;border-radius:7px;font-size:.9rem;outline:none}
-input:focus{border-color:#00d4ff}
-.rem{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:.78rem;color:#7a7f94;cursor:pointer}
-.rem input{width:auto;margin:0}
-button{width:100%;background:#00d4ff;color:#000;border:none;border-radius:7px;
-       padding:11px;font-size:.92rem;font-weight:700;cursor:pointer;margin-top:22px}
-button:hover{opacity:.88}
-.err{background:#2a0a0a;color:#ff5252;border-radius:6px;padding:8px 12px;
-     font-size:.78rem;margin-bottom:4px;line-height:1.4}
-.hint{text-align:center;color:#7a7f94;font-size:.72rem;margin-top:14px}
-.tls{text-align:center;color:#00e676;font-size:.72rem;margin-top:6px}
+body{background:var(--bg);color:var(--text);min-height:100vh;
+  display:flex;align-items:center;justify-content:center;padding:24px;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:14px;-webkit-font-smoothing:antialiased}
+/* subtle depth behind the card */
+body::before{content:"";position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(680px 420px at 50% -8%,rgba(218,41,28,.13),transparent 70%)}
+.wrap{width:100%;max-width:390px;position:relative}
+.brand{display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:22px}
+.brand-mark{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(150deg,var(--brand),#8E1810);
+  box-shadow:0 4px 16px rgba(218,41,28,.38)}
+.brand-mark svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.brand-text{line-height:1.15}
+.brand-name{font-size:1.22rem;font-weight:700;letter-spacing:-.4px}
+.brand-sub{font-size:.72rem;color:var(--text-3);font-weight:600;letter-spacing:.4px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:26px 26px 22px;box-shadow:0 1px 2px rgba(0,0,0,.3),0 12px 40px rgba(0,0,0,.28)}
+[data-theme="light"] .card{box-shadow:0 1px 2px rgba(15,23,42,.05),0 12px 36px rgba(15,23,42,.09)}
+h1{font-size:1.02rem;font-weight:650;margin-bottom:3px}
+.lede{color:var(--text-2);font-size:.81rem;margin-bottom:20px}
+label{display:block;font-size:.73rem;font-weight:600;color:var(--text-2);
+  margin:14px 0 6px;letter-spacing:.2px}
+input[type=text],input[type=password]{width:100%;background:var(--surface-2);
+  border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:8px;
+  font-size:.88rem;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+input::placeholder{color:var(--text-3)}
+input:hover{border-color:var(--border-2)}
+input:focus{border-color:var(--accent);box-shadow:var(--ring)}
+.rem{display:flex;align-items:center;gap:8px;margin-top:16px;
+  font-size:.79rem;color:var(--text-2);cursor:pointer;user-select:none;width:fit-content}
+.rem input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
+button{width:100%;background:var(--brand);color:#fff;border:none;border-radius:8px;
+  padding:11px;font-size:.88rem;font-weight:650;font-family:inherit;cursor:pointer;
+  margin-top:20px;display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:background .15s,transform .06s;box-shadow:0 1px 3px rgba(218,41,28,.3)}
+button:hover{background:#EE3427}
+[data-theme="light"] button:hover{background:#A81A0E}
+button:active{transform:translateY(1px)}
+button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.msg{display:flex;align-items:flex-start;gap:8px;border-radius:8px;padding:10px 12px;
+  font-size:.79rem;line-height:1.5;margin-bottom:4px;border-left:3px solid transparent}
+.msg svg{width:15px;height:15px;flex:none;margin-top:1px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.err{background:var(--danger-soft);color:var(--danger);border-left-color:var(--danger)}
+.warn{background:var(--amber-soft);color:var(--amber);border-left-color:var(--amber)}
+.foot{display:flex;align-items:center;justify-content:center;gap:7px;
+  margin-top:18px;font-size:.72rem;color:var(--text-3)}
+.foot svg{width:13px;height:13px;stroke:var(--green);fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.hint{text-align:center;color:var(--text-3);font-size:.72rem;margin-top:14px;line-height:1.6}
+.hint code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:1px 5px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
-<div class="box">
-  <div class="logo">⚡</div>
-  <h2>TC Lab v8</h2>
-  <div class="tls">🔒 TLS Encrypted</div>
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}{% for m in messages %}<div class="err">{{ m }}</div>{% endfor %}{% endif %}
-  {% endwith %}
-  <form method="POST" autocomplete="on">
-    <label>Username</label>
-    <input type="text" name="username" autofocus autocomplete="username"/>
-    <label>Password</label>
-    <input type="password" name="password" autocomplete="current-password"/>
-    <label class="rem"><input type="checkbox" name="remember"/> Remember me</label>
-    <button type="submit">Login →</button>
-  </form>
-  <div class="hint">Default: admin / tclab123 — change after first login</div>
+<div class="wrap">
+  <div class="brand">
+    <span class="brand-mark"><svg viewBox="0 0 24 24">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+    <span class="brand-text">
+      <div class="brand-name">TC Lab</div>
+      <div class="brand-sub">WAN EMULATOR</div>
+    </span>
+  </div>
+
+  <div class="card">
+    <h1>Sign in</h1>
+    <p class="lede">Enter your credentials to manage impairments.</p>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}{% for m in messages %}
+      <div class="msg err"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>{{ m }}</span></div>
+      {% endfor %}{% endif %}
+    {% endwith %}
+    {% if rate_limited %}
+      <div class="msg warn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/>
+        <polyline points="12 6 12 12 16 14"/></svg>
+        <span>Too many login attempts — wait a minute and try again.</span></div>
+    {% endif %}
+
+    <form method="POST" autocomplete="on">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autofocus autocomplete="username"
+             placeholder="admin" spellcheck="false"/>
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password"
+             placeholder="••••••••"/>
+      <label class="rem" for="remember">
+        <input type="checkbox" id="remember" name="remember"/> Keep me signed in</label>
+      <button type="submit">
+        <svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+          <polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Sign in</button>
+    </form>
+
+    <div class="foot">
+      <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      TLS encrypted connection
+    </div>
+  </div>
+
+  <p class="hint">First run? Default credentials are <code>admin</code> / <code>tclab123</code><br/>
+    Change the password immediately after signing in.</p>
 </div>
+<script>
+  /* match the theme chosen in the app */
+  try{ document.documentElement.setAttribute('data-theme',
+       localStorage.getItem('tc-theme')||'dark'); }catch(e){}
+</script>
 </body>
 </html>

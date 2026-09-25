@@ -2,381 +2,822 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>TC Lab v9.1</title>
+<meta name="csrf-token" content="{{ csrf_token() }}"/>
+<title>TC Lab v9.2</title>
 <style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TC Lab — design tokens
+   Palette takes cues from FortiOS: dark slate chrome, a single strong red
+   brand accent, teal for interaction, and disciplined semantic status colors.
+   ═══════════════════════════════════════════════════════════════════════ */
 :root{
-  --bg:#0f1117;--card:#1a1d27;--border:#2a2d3e;--accent:#00d4ff;
-  --green:#00e676;--red:#ff5252;--yellow:#ffd740;--orange:#ff9800;
-  --purple:#bb86fc;--text:#e0e0e0;--muted:#7a7f94;
-  /* theme-aware surface colors */
-  --bg2:#141209;--bg3:#1c1a10;--bg4:#101820;--bg5:#181c28;
-  --bg6:#111420;--input-bg:#11141e;--pre-col:#00e676}
+  --bg:#0E1116; --surface:#151A21; --surface-2:#1B222B; --surface-3:#212A35;
+  --border:#242C36; --border-2:#323C4A;
+  --text:#E8ECF2; --text-2:#98A3B3; --text-3:#6C7889;
+  --brand:#DA291C; --brand-ink:#FF6155;
+  --accent:#14B8A6; --accent-ink:#2DD4BF;
+  --green:#22C55E; --amber:#F59E0B; --blue:#3B82F6;
+  --purple:#A78BFA; --danger:#EF4444;
+  --brand-soft:rgba(218,41,28,.14); --accent-soft:rgba(20,184,166,.14);
+  --green-soft:rgba(34,197,94,.14);  --amber-soft:rgba(245,158,11,.14);
+  --blue-soft:rgba(59,130,246,.14);  --purple-soft:rgba(167,139,250,.14);
+  --danger-soft:rgba(239,68,68,.14);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.28);
+  --shadow-lg:0 8px 40px rgba(0,0,0,.55);
+  --ring:0 0 0 3px rgba(20,184,166,.28);
+  --topbar-h:56px; --side-w:232px;
+  --r-sm:6px; --r-md:8px; --r-lg:12px;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  /* legacy aliases still referenced by inline styles in generated markup */
+  --card:var(--surface); --muted:var(--text-2); --red:var(--danger);
+  --yellow:var(--amber); --orange:var(--amber); --input-bg:var(--surface-2);
+  --pre-col:var(--text);
+}
 [data-theme="light"]{
-  --bg:#f0f2f8;--card:#ffffff;--border:#d4d8ea;--accent:#0066bb;
-  --green:#006b3c;--red:#c0392b;--yellow:#7a5700;--orange:#b34d00;
-  --purple:#5b2d9e;--text:#1a1d2e;--muted:#5a607a;
-  --bg2:#e8f7f5;--bg3:#f0faf9;--bg4:#e8f4fd;--bg5:#f4f6ff;
-  --bg6:#eef1ff;--input-bg:#f4f6fb;--pre-col:#006b3c}
+  --bg:#F5F7FA; --surface:#FFFFFF; --surface-2:#F7F9FB; --surface-3:#EDF2F7;
+  --border:#E3E8EF; --border-2:#CBD5E1;
+  --text:#0F172A; --text-2:#556070; --text-3:#818C9B;
+  --brand:#C41E10; --brand-ink:#C41E10;
+  --accent:#0D9488; --accent-ink:#0D9488;
+  --green:#16A34A; --amber:#B45309; --blue:#2563EB;
+  --purple:#7C3AED; --danger:#DC2626;
+  --brand-soft:rgba(196,30,16,.09); --accent-soft:rgba(13,148,136,.10);
+  --green-soft:rgba(22,163,74,.10);  --amber-soft:rgba(180,83,9,.10);
+  --blue-soft:rgba(37,99,235,.10);   --purple-soft:rgba(124,58,237,.10);
+  --danger-soft:rgba(220,38,38,.09);
+  --shadow:0 1px 2px rgba(15,23,42,.06), 0 4px 14px rgba(15,23,42,.06);
+  --shadow-lg:0 12px 44px rgba(15,23,42,.18);
+  --ring:0 0 0 3px rgba(13,148,136,.20);
+}
+
+/* ── Base ──────────────────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;font-size:14px}
-header{background:var(--card);border-bottom:1px solid var(--border);
-       padding:10px 18px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-header h1{font-size:1.02rem;font-weight:700;color:var(--accent)}
-.badge{background:#1e3a4f;color:var(--accent);padding:2px 9px;border-radius:12px;font-size:.71rem}
-.badge.live{background:#0a2a1a;color:var(--green)}
-.tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap}
-.tab{padding:9px 18px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;
-     font-size:.82rem;font-weight:600;transition:.15s}
-.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
-main{max-width:1300px;margin:14px auto;padding:0 13px}
-.panel{display:none}.panel.active{display:block}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+::selection{background:var(--accent);color:#04211E}
+:focus-visible{outline:none;box-shadow:var(--ring);border-radius:var(--r-sm)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:6px;border:2px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:var(--text-3)}
 
-/* ── Bridge groups in TC tab ─────────────────────────────── */
-.bridge-group{background:var(--bg2);border:1px solid #5a4a00;border-radius:11px;
-  padding:12px 12px 14px;margin-bottom:14px}
-.bridge-group-hdr{display:flex;align-items:center;gap:8px;margin-bottom:11px;
-  color:var(--yellow);font-weight:700;font-size:.84rem}
-.bridge-group-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(305px,1fr));gap:11px}
-.section-hdr{color:var(--muted);font-size:.78rem;font-weight:700;
-  padding:6px 4px 8px;letter-spacing:.5px;text-transform:uppercase}
-.standalone-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(305px,1fr));gap:11px}
-.bridge-group-hdr{cursor:pointer;user-select:none}
-.bridge-group-hdr:hover{opacity:.88}
-.br-toggle-btn{background:var(--border);border:none;border-radius:5px;
-  color:var(--text);padding:3px 9px;font-size:.75rem;cursor:pointer;font-weight:700;
-  margin-left:auto;white-space:nowrap}
-.br-member-summary{display:flex;flex-wrap:wrap;align-items:center;gap:5px;
-  padding:7px 4px 3px;border-top:1px dashed var(--border);margin-top:8px}
-.br-member-summary .ms-label{color:var(--muted);font-size:.72rem;margin-right:2px}
-[data-theme="light"] .br-toggle-btn{background:#e0e4f0;color:#1a1d2e}
+.ic{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ic-sm{width:14px;height:14px}
+.ic-lg{width:18px;height:18px}
 
-/* ── Cards ───────────────────────────────────────────────── */
-.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px}
-.card.is-bridge{border-color:#5a4a00;background:var(--bg3)}
-.card.is-member{border-color:#003a5a;background:var(--bg4)}
+/* ── App frame ─────────────────────────────────────────────────────── */
+.topbar{position:fixed;inset:0 0 auto 0;height:var(--topbar-h);z-index:60;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:9px;min-width:0}
+.brand-mark{width:28px;height:28px;border-radius:7px;flex:none;display:grid;place-items:center;
+  background:linear-gradient(150deg,var(--brand),#8E1810);color:#fff;
+  box-shadow:0 2px 8px rgba(218,41,28,.35)}
+.brand-mark svg{width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.brand-name{font-size:.95rem;font-weight:700;letter-spacing:-.2px;white-space:nowrap}
+.brand-ver{font-size:.66rem;font-weight:700;color:var(--text-3);
+  border:1px solid var(--border-2);border-radius:20px;padding:1px 7px;white-space:nowrap}
+.statusbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
+.topbar-actions{margin-left:auto;display:flex;align-items:center;gap:4px}
+
+.icon-btn{width:34px;height:34px;border-radius:var(--r-md);border:1px solid transparent;
+  background:transparent;color:var(--text-2);display:grid;place-items:center;cursor:pointer;
+  transition:background .15s,color .15s,border-color .15s;text-decoration:none;padding:0}
+.icon-btn:hover{background:var(--surface-3);color:var(--text);border-color:var(--border)}
+.icon-btn.sm{width:28px;height:28px}
+.icon-btn.danger:hover{background:var(--danger-soft);color:var(--danger);border-color:transparent}
+.icon-btn:disabled{opacity:.5;cursor:default}
+.icon-btn .ic{width:17px;height:17px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinning .ic{animation:spin .7s linear infinite}
+
+.shell{display:flex;padding-top:var(--topbar-h);min-height:100vh}
+.sidebar{width:var(--side-w);flex:none;position:fixed;top:var(--topbar-h);bottom:0;left:0;
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;padding:14px 10px 10px;gap:4px;overflow-y:auto;z-index:50}
+.nav-label{font-size:.64rem;font-weight:700;letter-spacing:.9px;text-transform:uppercase;
+  color:var(--text-3);padding:4px 10px 6px}
+.tabs{display:flex;flex-direction:column;gap:2px}
+.tab{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:var(--r-md);
+  cursor:pointer;color:var(--text-2);font-size:.83rem;font-weight:600;position:relative;
+  transition:background .15s,color .15s;user-select:none;white-space:nowrap}
+.tab:hover{background:var(--surface-3);color:var(--text)}
+.tab.active{background:var(--brand-soft);color:var(--brand-ink)}
+.tab.active::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;
+  border-radius:0 3px 3px 0;background:var(--brand)}
+.tab .ic{opacity:.85}
+.sidebar-foot{margin-top:auto;padding-top:10px;border-top:1px solid var(--border)}
+.user-chip{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r-md)}
+.avatar{width:28px;height:28px;border-radius:50%;flex:none;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent-ink);font-weight:700;font-size:.75rem}
+.user-meta{min-width:0;line-height:1.25}
+.user-name{font-size:.79rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-role{font-size:.66rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+
+main{flex:1;min-width:0;margin-left:var(--side-w);padding:20px 22px 60px;max-width:1500px}
+.panel{display:none;animation:fade .18s ease}
+.panel.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+.page-hdr{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.page-title{font-size:1.2rem;font-weight:700;letter-spacing:-.3px}
+.page-sub{color:var(--text-2);font-size:.82rem;margin-top:2px;max-width:70ch}
+.page-actions{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ── Cards ─────────────────────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:16px;box-shadow:var(--shadow)}
+.card + .card{margin-top:14px}
+.card-hdr{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  margin:-16px -16px 14px;padding:13px 16px;border-bottom:1px solid var(--border);
+  background:var(--surface-2);border-radius:var(--r-lg) var(--r-lg) 0 0}
+.card-title{font-weight:650;font-size:.88rem;display:flex;align-items:center;gap:8px;
+  flex-wrap:wrap;min-width:0}
+.card-title .ic{color:var(--text-2)}
+.card-note{color:var(--text-2);font-size:.8rem;line-height:1.6;margin-bottom:14px}
+
+/* ── Buttons ───────────────────────────────────────────────────────── */
+button{font:inherit}
+button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 13px;border:1px solid transparent;border-radius:var(--r-sm);cursor:pointer;
+  font-size:.79rem;font-weight:600;line-height:1.2;white-space:nowrap;text-decoration:none;
+  background:var(--surface-3);color:var(--text);
+  transition:background .15s,border-color .15s,color .15s,opacity .15s,transform .06s}
+button:active,.btn:active{transform:translateY(1px)}
+button:disabled{opacity:.55;cursor:default;transform:none}
+button .ic{width:14px;height:14px}
+.bA{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 1px 3px rgba(218,41,28,.3)}
+.bA:hover{background:#EE3427;border-color:#EE3427}
+[data-theme="light"] .bA:hover{background:#A81A0E;border-color:#A81A0E}
+.bN{background:var(--surface-3);border-color:var(--border);color:var(--text)}
+.bN:hover{border-color:var(--border-2);background:var(--surface-2)}
+.bG{background:var(--green-soft);border-color:transparent;color:var(--green)}
+.bG:hover{border-color:var(--green)}
+.bB{background:var(--accent-soft);border-color:transparent;color:var(--accent-ink)}
+.bB:hover{border-color:var(--accent)}
+.bR{background:var(--danger-soft);border-color:transparent;color:var(--danger)}
+.bR:hover{border-color:var(--danger)}
+.bY{background:var(--amber-soft);border-color:transparent;color:var(--amber)}
+.bY:hover{border-color:var(--amber)}
+.bP{background:var(--purple-soft);border-color:transparent;color:var(--purple)}
+.bP:hover{border-color:var(--purple)}
+.btn-xs{padding:3px 8px;font-size:.71rem;border-radius:5px}
+.btn-xs .ic{width:12px;height:12px}
+.bgrp{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap}
+
+/* ── Forms ─────────────────────────────────────────────────────────── */
+label{display:block;color:var(--text-2);font-size:.72rem;font-weight:600;
+  letter-spacing:.2px;margin-bottom:5px}
+input[type=number],input[type=text],input[type=password],select{
+  width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+  padding:8px 10px;border-radius:var(--r-sm);font-size:.83rem;font-family:inherit;outline:none;
+  transition:border-color .15s,box-shadow .15s}
+input::placeholder{color:var(--text-3)}
+input:hover,select:hover{border-color:var(--border-2)}
+input:focus,select:focus{border-color:var(--accent);box-shadow:var(--ring)}
+select{appearance:none;cursor:pointer;padding-right:30px;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
+                   linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;vertical-align:-2px}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.r3{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.field-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.check-row{display:flex;align-items:center;gap:7px;margin-top:12px;
+  font-size:.8rem;font-weight:600;color:var(--text-2);cursor:pointer;user-select:none}
+.check-row label{margin:0;cursor:pointer;font-size:.8rem}
+
+/* numeric field with unit suffix (impairment cards) */
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field label{margin-bottom:4px;font-size:.69rem}
+.input-wrap{position:relative;display:flex;align-items:center}
+.input-wrap input{padding-right:38px;font-variant-numeric:tabular-nums}
+.unit{position:absolute;right:10px;font-size:.68rem;color:var(--text-3);
+  pointer-events:none;font-weight:600}
+
+/* ── Status / badges / tags ────────────────────────────────────────── */
+.badge{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);
+  color:var(--text-2);border:1px solid var(--border);padding:3px 10px;border-radius:20px;
+  font-size:.71rem;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.badge.live{background:var(--green-soft);color:var(--green);border-color:transparent}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;
+  font-size:.68rem;font-weight:650;white-space:nowrap;line-height:1.5}
+.tG{background:var(--green-soft);color:var(--green)}
+.tY{background:var(--amber-soft);color:var(--amber)}
+.tB{background:var(--accent-soft);color:var(--accent-ink)}
+.tR{background:var(--danger-soft);color:var(--danger)}
+.tP{background:var(--purple-soft);color:var(--purple)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
+.dot-up{background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+.dot-dn{background:var(--danger);box-shadow:0 0 0 3px var(--danger-soft)}
+.dot-br{background:var(--amber);box-shadow:0 0 0 3px var(--amber-soft)}
+
+/* inline status line under a form/card */
+.sb{font-size:.75rem;margin-top:10px;padding:8px 11px;border-radius:var(--r-sm);
+  line-height:1.5;word-break:break-word;border-left:3px solid transparent}
+.sb:empty{display:none}
+.ok{background:var(--green-soft);color:var(--green);border-left-color:var(--green)}
+.err{background:var(--danger-soft);color:var(--danger);border-left-color:var(--danger)}
+.info{background:var(--accent-soft);color:var(--accent-ink);border-left-color:var(--accent)}
+.warn{background:var(--amber-soft);color:var(--amber);border-left-color:var(--amber)}
+.wbanner{border-radius:var(--r-sm);padding:7px 11px;font-size:.73rem;margin:10px 0 0;line-height:1.5}
+.scan-banner{background:var(--green-soft);border:1px solid transparent;
+  border-left:3px solid var(--green);color:var(--green);padding:9px 14px;
+  border-radius:var(--r-sm);font-size:.78rem;margin-bottom:14px;display:none}
+.empty{color:var(--text-3);font-size:.82rem;text-align:center;padding:34px 16px}
+
+/* ── Tables ────────────────────────────────────────────────────────── */
+.table-wrap{overflow-x:auto;margin:-16px;padding:0}
+.card-hdr + .table-wrap{margin-top:-14px}
+.bt{width:100%;border-collapse:collapse;font-size:.81rem}
+.bt th{text-align:left;padding:9px 16px;color:var(--text-3);font-weight:700;
+  font-size:.68rem;letter-spacing:.7px;text-transform:uppercase;
+  border-bottom:1px solid var(--border);white-space:nowrap;background:var(--surface)}
+.bt td{padding:9px 16px;border-bottom:1px solid var(--border);vertical-align:middle}
+.bt tbody tr:last-child td{border-bottom:none}
+.bt tbody tr{transition:background .12s}
+.bt tbody tr:hover{background:var(--surface-2)}
+.bt .actions{display:flex;gap:5px;flex-wrap:wrap}
+.phy-row td:first-child{font-weight:650}
+.vlan-row td:first-child{padding-left:34px;position:relative;color:var(--text-2)}
+.vlan-row td:first-child::before{content:"";position:absolute;left:20px;top:0;bottom:50%;
+  width:8px;border-left:1px solid var(--border-2);border-bottom:1px solid var(--border-2);
+  border-bottom-left-radius:4px}
+.vlan-row.orphan td:first-child{color:var(--danger)}
+.toggle-btn{background:transparent;border:1px solid var(--border);color:var(--text-2);
+  font-size:.7rem;padding:2px 8px;border-radius:20px;cursor:pointer;font-weight:600}
+.toggle-btn:hover{border-color:var(--accent);color:var(--accent-ink)}
+.mono{font-family:var(--mono);font-size:.78rem}
+.muted{color:var(--text-3)}
+
+/* ── TC Emulation grid ─────────────────────────────────────────────── */
+.bridge-groups-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));
+  gap:14px;margin-bottom:20px}
+.bridge-group{background:var(--surface);border:1px solid var(--border);
+  border-top:2px solid var(--amber);border-radius:var(--r-lg);padding:14px;box-shadow:var(--shadow)}
+.bridge-group-hdr{display:flex;align-items:center;gap:8px;margin-bottom:10px;
+  font-weight:650;font-size:.86rem;flex-wrap:wrap}
+.bridge-group-hdr .ic{color:var(--amber)}
+/* holds exactly one card — the bridge's own control — so it fills the group */
+.bridge-group-grid{display:grid;grid-template-columns:1fr}
+/* that card's header would repeat the group header; the group carries the
+   identity and the actions, so the nested header is dropped */
+.bridge-group .card.is-bridge{border:none;box-shadow:none;padding:0;background:transparent}
+.bridge-group .card.is-bridge > .card-hdr{display:none}
+.bridge-group .card.is-bridge.has-tc{background:transparent}
+.member-chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center;
+  padding:9px 0;margin-bottom:11px;border-top:1px dashed var(--border);
+  border-bottom:1px dashed var(--border)}
+.member-chips .ms-label{color:var(--text-3);font-size:.7rem;font-weight:600;margin-right:2px}
+.br-open-btn{margin-left:auto;background:var(--accent-soft);color:var(--accent-ink);
+  border:1px solid transparent;border-radius:var(--r-sm);padding:4px 10px;
+  font-size:.72rem;font-weight:650;cursor:pointer}
+.br-open-btn:hover{border-color:var(--accent)}
+.section-hdr{color:var(--text-3);font-size:.68rem;font-weight:700;letter-spacing:.9px;
+  text-transform:uppercase;padding:4px 2px 10px;display:flex;align-items:center;gap:8px}
+.section-hdr::after{content:"";flex:1;height:1px;background:var(--border)}
+.standalone-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+
+/* impairment card */
+.card.is-bridge{border-color:var(--border);box-shadow:none}
+.bridge-group .card{box-shadow:none}
+.card.is-member{border-left:2px solid var(--accent)}
 .card.has-tc{border-color:var(--green)}
-.card-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
-.card-title{font-weight:700;font-size:.86rem;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
-.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block}
-.dot-up{background:var(--green)}.dot-dn{background:var(--red)}.dot-br{background:var(--yellow)}
-.label-row{display:flex;align-items:center;gap:5px;margin-bottom:7px}
-.label-input{flex:1;background:transparent;border:none;border-bottom:1px dashed var(--border);
-  color:var(--purple);font-size:.74rem;padding:2px 3px;outline:none;font-style:italic}
-.label-input:focus{border-bottom-color:var(--purple)}
-.label-input::placeholder{color:var(--muted)}
-.label-save{background:none;border:none;cursor:pointer;color:var(--purple);font-size:.73rem;opacity:.7}
-.label-save:hover{opacity:1}
-label{display:block;color:var(--muted);font-size:.72rem;margin-bottom:2px;margin-top:6px}
-input[type=number],input[type=text],select{
-  width:100%;background:var(--input-bg);border:1px solid var(--border);
-  color:var(--text);padding:5px 8px;border-radius:5px;font-size:.81rem;outline:none}
-input:focus,select:focus{border-color:var(--accent)}
-.r2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-.r3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
-button{padding:6px 11px;border:none;border-radius:6px;cursor:pointer;font-size:.77rem;font-weight:600;transition:.15s}
-.bA{background:var(--accent);color:#000}.bA:hover{opacity:.85}
-.bG{background:#0a2a1a;color:var(--green);border:1px solid var(--green)}
-.bB{background:#0a1a2a;color:var(--accent);border:1px solid var(--accent)}
-.bR{background:#2a0a0a;color:var(--red);border:1px solid var(--red)}
-.bY{background:#2a2000;color:var(--yellow);border:1px solid var(--yellow)}
-.bN{background:#2a2d3e;color:var(--text)}.bN:hover{background:#3a3d4e}
-.bP{background:#1a0a2a;color:var(--purple);border:1px solid var(--purple)}
-.bgrp{display:flex;gap:5px;margin-top:9px;flex-wrap:wrap}
-.sb{font-size:.71rem;margin-top:6px;padding:5px 8px;border-radius:4px;
-    min-height:20px;word-break:break-word;line-height:1.4}
-.ok{background:#0a2a1a;color:var(--green)}.err{background:#2a0a0a;color:var(--red)}
-.info{background:#0a1a2a;color:var(--accent)}.warn{background:#2a1a00;color:var(--orange)}
-.wbanner{border-radius:5px;padding:5px 9px;font-size:.72rem;margin-top:5px;line-height:1.5}
-.tag{padding:2px 6px;border-radius:9px;font-size:.68rem;margin-right:2px;white-space:nowrap}
-.tG{background:#0a2a1a;color:var(--green)}.tY{background:#2a2000;color:var(--yellow)}
-.tB{background:#0a1a2a;color:var(--accent)}.tR{background:#2a0a0a;color:var(--red)}
-.tP{background:#1a0a2a;color:var(--purple)}
-/* ── Interface tree (VLAN tab) ───────────────────────────── */
-.bt{width:100%;border-collapse:collapse;font-size:.80rem}
-.bt th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)}
-.bt td{padding:6px 8px;border-bottom:1px solid #1a1d2a;vertical-align:middle}
-.phy-row{background:var(--bg5)}
-.phy-row td:first-child{font-weight:700}
-.vlan-row{background:var(--bg6)}
-.vlan-row td:first-child{padding-left:26px;color:var(--yellow)}
-.vlan-row td:first-child::before{content:"└─ ";color:var(--muted)}
-.toggle-btn{background:none;border:none;cursor:pointer;color:var(--accent);
-  font-size:.75rem;padding:2px 5px;opacity:.8}.toggle-btn:hover{opacity:1}
-/* ── Modals ──────────────────────────────────────────────── */
-.modal-bg{display:none;position:fixed;inset:0;background:#000c;z-index:100;
+.card.has-tc .card-hdr{background:var(--green-soft)}
+.iface-card .card-hdr{margin:-16px -16px 12px}
+.iface-name{font-family:var(--mono);font-size:.83rem;font-weight:650;letter-spacing:-.2px}
+.label-row{display:flex;align-items:center;gap:6px;margin-bottom:12px;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:3px 8px;transition:border-color .15s}
+.label-row:focus-within{border-color:var(--accent)}
+.label-row .ic{color:var(--text-3);width:13px;height:13px}
+.label-input{flex:1;background:transparent;border:none;color:var(--text);
+  font-size:.75rem;padding:3px 0;outline:none;font-family:inherit;min-width:0}
+.label-input::placeholder{color:var(--text-3);font-style:italic}
+.label-save{background:none;border:none;cursor:pointer;color:var(--text-3);
+  padding:2px;display:grid;place-items:center}
+.label-save:hover{color:var(--green)}
+
+/* ── Chips (profiles) ──────────────────────────────────────────────── */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:7px;background:var(--surface-2);
+  border:1px solid var(--border);color:var(--text);padding:6px 8px 6px 12px;
+  border-radius:20px;cursor:pointer;font-size:.78rem;font-weight:600;
+  transition:border-color .15s,background .15s}
+.chip:hover{border-color:var(--accent);background:var(--accent-soft)}
+.chip.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
+.chip-del{border:none;background:transparent;color:var(--text-3);padding:2px;
+  border-radius:50%;display:grid;place-items:center;cursor:pointer}
+.chip-del:hover{background:var(--danger-soft);color:var(--danger)}
+pre{font-family:var(--mono);font-size:.78rem;line-height:1.6;color:var(--text-2);
+  white-space:pre-wrap;word-break:break-word}
+.code-block{background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--r-sm);padding:12px 14px;overflow:auto;max-height:420px}
+
+/* ── Modals ────────────────────────────────────────────────────────── */
+.modal-bg{display:none;position:fixed;inset:0;z-index:100;padding:20px;
+  background:rgba(4,7,12,.62);backdrop-filter:blur(3px);
   align-items:center;justify-content:center}
-.modal-bg.show{display:flex}
-.mbox{background:var(--card);border:1px solid var(--border);border-radius:11px;
-      padding:18px;max-width:640px;width:95%;max-height:80vh;overflow:auto}
-pre{font:13px/1.4 "Courier New",monospace;color:var(--pre-col);white-space:pre-wrap}
-.mhdr{font-weight:700;margin-bottom:9px;color:var(--accent);
-      display:flex;justify-content:space-between;align-items:center}
-.x{cursor:pointer;color:var(--red);padding:2px 5px}
-.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
-.chip{background:#1a2a3a;border:1px solid var(--accent);color:var(--accent);
-      padding:3px 9px;border-radius:10px;cursor:pointer;font-size:.75rem}
-.chip:hover{background:#0a3a5a}
+.modal-bg.show{display:flex;animation:fade .15s ease}
+.mbox{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  max-width:680px;width:100%;max-height:86vh;display:flex;flex-direction:column;
+  box-shadow:var(--shadow-lg);overflow:hidden}
+.mhdr{font-weight:650;font-size:.92rem;padding:14px 18px;border-bottom:1px solid var(--border);
+  background:var(--surface-2);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.mhdr .ic{color:var(--text-2)}
+.mbody{padding:18px;overflow:auto}
+.x{cursor:pointer;color:var(--text-3);display:grid;place-items:center;
+  width:26px;height:26px;border-radius:var(--r-sm);flex:none}
+.x:hover{background:var(--danger-soft);color:var(--danger)}
+.msec{margin-top:20px;padding-top:18px;border-top:1px solid var(--border)}
+.msec:first-child{margin-top:0;padding-top:0;border-top:none}
+.msec-title{font-weight:650;font-size:.83rem;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.msec-title .ic{color:var(--text-2)}
+.field-stack > label{margin-top:12px}
+.field-stack > label:first-child{margin-top:0}
+.id-row{display:flex;align-items:center;gap:10px;padding:11px 13px;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--r-md)}
 
-.theme-toggle{display:flex;align-items:center;gap:10px;margin-top:18px;
-  border-top:1px solid var(--border);padding-top:14px}
-.toggle-track{width:44px;height:24px;background:var(--border);border-radius:12px;
-  cursor:pointer;position:relative;transition:.2s}
-.toggle-track.on{background:var(--accent)}
-.toggle-thumb{width:18px;height:18px;background:#fff;border-radius:50%;
-  position:absolute;top:3px;left:3px;transition:.2s}
-.toggle-track.on .toggle-thumb{left:23px}
+/* ── Theme toggle ──────────────────────────────────────────────────── */
+.theme-row{display:flex;align-items:center;gap:12px}
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:20px;padding:3px;margin-left:auto;gap:2px}
+.seg-btn{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;
+  border:none;background:transparent;color:var(--text-2);font-size:.75rem;font-weight:600;cursor:pointer}
+.seg-btn.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.toggle-track{display:none}
 
-/* ── Idle warning bar ────────────────────────────────────── */
-#idle-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;
-  background:#2a1000;border-top:2px solid var(--orange);color:var(--orange);
-  padding:10px 20px;font-size:.84rem;display:none;
-  align-items:center;justify-content:space-between}
-#idle-bar.show{display:flex}
-.scan-banner{background:#0a2a1a;border:1px solid var(--green);color:var(--green);
-  padding:6px 13px;border-radius:6px;font-size:.77rem;margin-bottom:12px;display:none}
-
-[data-theme="light"] .tG{background:#d4f5e3;color:#006b3c}
-[data-theme="light"] .tY{background:#e0f2f1;color:#00695c}
-[data-theme="light"] .tB{background:#d0eaff;color:#0055aa}
-[data-theme="light"] .tR{background:#ffd6d6;color:#c0392b}
-[data-theme="light"] .tP{background:#ead6ff;color:#5b2d9e}
-[data-theme="light"] .bA{background:#0066bb;color:#fff}
-[data-theme="light"] .bG{background:#d4f5e3;color:#006b3c;border-color:#006b3c}
-[data-theme="light"] .bB{background:#d0eaff;color:#0055aa;border-color:#0055aa}
-[data-theme="light"] .bR{background:#ffd6d6;color:#c0392b;border-color:#c0392b}
-[data-theme="light"] .bY{background:#e0f2f1;color:#00695c;border-color:#00695c}
-[data-theme="light"] .bN{background:#e8eaf0;color:#1a1d2e}
-[data-theme="light"] .bP{background:#ead6ff;color:#5b2d9e;border-color:#5b2d9e}
-[data-theme="light"] .ok{background:#d4f5e3;color:#006b3c}
-[data-theme="light"] .err{background:#ffd6d6;color:#c0392b}
-[data-theme="light"] .info{background:#d0eaff;color:#0055aa}
-[data-theme="light"] .warn{background:#e0f2f1;color:#00695c}
-[data-theme="light"] .wbanner[style*="orange"]{background:#e0f2f1!important;color:#00695c!important;border-color:#00897b!important}
-[data-theme="light"] .wbanner[style*="accent"]{background:#d0eaff!important;color:#0055aa!important;border-color:#0055aa!important}
-[data-theme="light"] .chip{background:#e8f0ff;border-color:#0066bb;color:#0066bb}
-[data-theme="light"] .chip:hover{background:#c8d8f8}
-[data-theme="light"] .scan-banner{background:#d4f5e3;border-color:#006b3c;color:#006b3c}
-[data-theme="light"] .badge{background:#d0eaff;color:#0055aa}
-[data-theme="light"] .badge.live{background:#d4f5e3;color:#006b3c}
-[data-theme="light"] .bridge-group{border-color:#00897b;background:var(--bg2)}
-[data-theme="light"] .bridge-group-hdr{color:#00695c}
-[data-theme="light"] .section-hdr{color:#5a607a}
-[data-theme="light"] .toggle-track{background:#c8ccd8}
-[data-theme="light"] .toggle-track.on{background:#0066bb}
-[data-theme="light"] #idle-bar{background:#e0f2f1;border-color:#00897b;color:#00695c}
-
-/* ── Bridge member slide-out drawer ───────────────────── */
-.br-drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1100;
+/* ── Drawer ────────────────────────────────────────────────────────── */
+.br-drawer-overlay{position:fixed;inset:0;background:rgba(4,7,12,.5);z-index:1100;
   display:none;backdrop-filter:blur(2px)}
-.br-drawer-overlay.open{display:block}
-.br-drawer{position:fixed;right:-900px;top:0;width:min(880px,94vw);height:100vh;
-  background:var(--card);border-left:2px solid var(--accent);z-index:1101;
-  overflow-y:auto;transition:right .28s cubic-bezier(.4,0,.2,1);
-  display:flex;flex-direction:column}
-.br-drawer.open{right:0;box-shadow:-8px 0 40px rgba(0,0,0,.5)}
-.br-drawer-hdr{display:flex;align-items:center;gap:8px;padding:16px 18px 12px;
-  border-bottom:1px solid var(--border);position:sticky;top:0;
-  background:var(--card);z-index:1;flex-wrap:wrap}
-.br-drawer-body{padding:16px 18px;
+.br-drawer-overlay.open{display:block;animation:fade .15s ease}
+.br-drawer{position:fixed;right:0;top:0;width:min(900px,95vw);height:100vh;
+  background:var(--bg);border-left:1px solid var(--border);z-index:1101;overflow:hidden;
+  display:flex;flex-direction:column;transform:translateX(102%);
+  transition:transform .26s cubic-bezier(.4,0,.2,1)}
+.br-drawer.open{transform:none;box-shadow:var(--shadow-lg)}
+.br-drawer-hdr{display:flex;align-items:center;gap:10px;padding:15px 20px;flex-wrap:wrap;
+  border-bottom:1px solid var(--border);background:var(--surface);flex:none}
+.br-drawer-body{padding:18px 20px 40px;overflow-y:auto;flex:1;
   display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));
-  gap:14px;align-items:start;flex:1}
-.br-open-btn{background:var(--accent);color:#000;border:none;border-radius:6px;
-  padding:4px 11px;font-size:.72rem;font-weight:700;cursor:pointer;white-space:nowrap}
-.br-open-btn:hover{opacity:.85}
-[data-theme="light"] .br-drawer{border-left-color:var(--accent)}
-[data-theme="light"] .br-open-btn{background:var(--accent);color:#fff}
+  gap:14px;align-items:start}
 
-.bridge-groups-grid{display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(480px,1fr));gap:14px;
-  margin-bottom:18px}
+/* ── Idle bar ──────────────────────────────────────────────────────── */
+#idle-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;
+  background:var(--surface);border-top:2px solid var(--amber);color:var(--text);
+  padding:12px 22px;font-size:.83rem;align-items:center;gap:14px;box-shadow:var(--shadow-lg)}
+#idle-bar.show{display:flex}
+#idle-bar .ic{color:var(--amber)}
+#idle-countdown{font-family:var(--mono);font-weight:700;color:var(--amber)}
+
+/* admin-only blocks stay hidden until whoami confirms the role
+   (the server enforces this too — this only reduces clutter) */
+.admin-only{display:none}
+body.is-admin .admin-only{display:block}
+body.is-admin .tab.admin-only{display:flex}
+
+/* ── Responsive ────────────────────────────────────────────────────── */
+@media(max-width:960px){
+  :root{--side-w:64px}
+  .tab{justify-content:center;padding:11px 0}
+  /* collapse the sidebar to icons — scoped, so .user-meta in the
+     settings modal is untouched */
+  .tab span,.nav-label,.sidebar .user-meta{display:none}
+  .tab.active::before{display:none}
+  .user-chip{justify-content:center;padding:8px 0}
+  main{padding:16px 14px 60px}
+}
+@media(max-width:680px){
+  .statusbar{display:none}
+  .brand-ver{display:none}
+  .fields{grid-template-columns:1fr}
+  .bridge-groups-grid,.standalone-grid,.bridge-group-grid{grid-template-columns:1fr}
+  .card-hdr{flex-wrap:wrap}
+}
+@media(prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
 </style>
 </head>
 <body>
-<header>
-  <h1>⚡ TC Lab v9.1</h1>
-  <span class="badge" id="b-if">– ifaces</span>
-  <span class="badge" id="b-br">– bridges</span>
-  <span class="badge live" id="b-live" style="display:none">● Live</span>
-  <div style="margin-left:auto;display:flex;gap:7px">
-    <button class="bN" style="font-size:.75rem;padding:4px 10px" onclick="(async()=>{const b=event.currentTarget;const orig=b.textContent;b.textContent='↻ …';b.disabled=true;await loadAll();b.textContent=orig;b.disabled=false;})()">↻ Refresh</button>
-    <button class="bP" style="font-size:.75rem;padding:4px 10px" onclick="openSettings()">⚙ Settings</button>
-    <a href="/logout"><button class="bR" style="font-size:.75rem;padding:4px 10px">Logout</button></a>
+
+<!-- icon sprite ─────────────────────────────────────────────────────── -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<symbol id="i-zap" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+<symbol id="i-sliders" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+<symbol id="i-bridge" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+<symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></symbol>
+<symbol id="i-up" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></symbol>
+<symbol id="i-down" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+<symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"/><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"/><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></symbol>
+<symbol id="i-tag" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+<symbol id="i-package" viewBox="0 0 24 24"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></symbol>
+</defs></svg>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark"><svg viewBox="0 0 24 24"><use href="#i-zap"/></svg></span>
+    <span class="brand-name">TC Lab</span>
+    <span class="brand-ver">v9.2</span>
+  </div>
+  <div class="statusbar">
+    <span class="badge" id="b-if">– ifaces</span>
+    <span class="badge" id="b-br">– bridges</span>
+    <span class="badge live" id="b-live" style="display:none">● Live</span>
+  </div>
+  <div class="topbar-actions">
+    <button class="icon-btn" id="topbar-refresh" title="Refresh all" aria-label="Refresh all"
+            onclick="doRefresh(this)"><svg class="ic"><use href="#i-refresh"/></svg></button>
+    <button class="icon-btn" title="Settings" aria-label="Settings"
+            onclick="openSettings()"><svg class="ic"><use href="#i-settings"/></svg></button>
+    <a class="icon-btn danger" href="/logout" title="Log out" aria-label="Log out"><svg class="ic"><use href="#i-logout"/></svg></a>
   </div>
 </header>
-<main>
-  <div class="scan-banner" id="scan-banner"></div>
-  <div class="tabs">
-    <div class="tab active" data-t="tc"       onclick="switchTab('tc')">🎛 TC Emulation</div>
-    <div class="tab"        data-t="vlans"    onclick="switchTab('vlans')">🔌 Interfaces / VLANs</div>
-    <div class="tab"        data-t="bridges"  onclick="switchTab('bridges')">🌉 Bridge Manager</div>
-    <div class="tab"        data-t="profiles" onclick="switchTab('profiles')">📁 Profiles</div>
-  </div>
 
-  <!-- TC Emulation — grouped by bridge -->
-  <div id="tab-tc" class="panel active">
-    <div id="iface-grid"></div>
-  </div>
-
-  <!-- Interfaces / VLANs — tree view -->
-  <div id="tab-vlans" class="panel">
-    <div class="card" style="margin-bottom:12px">
-      <div class="card-hdr">
-        <div class="card-title">🔌 Physical Interfaces &amp; VLAN Sub-interfaces</div>
-        <button class="bB" onclick="reloadVlans(event)">↻ Reload</button>
-      </div>
-      <table class="bt">
-        <thead><tr><th>Interface</th><th>Type</th><th>State</th><th>MTU</th><th>Actions</th></tr></thead>
-        <tbody id="phy-tbody"><tr><td colspan="5" style="color:var(--muted)">Loading…</td></tr></tbody>
-      </table>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="nav-label">Configuration</div>
+    <div class="tabs">
+      <div class="tab active" data-t="tc" onclick="switchTab('tc')">
+        <svg class="ic"><use href="#i-sliders"/></svg><span>TC Emulation</span></div>
+      <div class="tab" data-t="vlans" onclick="switchTab('vlans')">
+        <svg class="ic"><use href="#i-layers"/></svg><span>Interfaces / VLANs</span></div>
+      <div class="tab" data-t="bridges" onclick="switchTab('bridges')">
+        <svg class="ic"><use href="#i-bridge"/></svg><span>Bridge Manager</span></div>
+      <div class="tab" data-t="profiles" onclick="switchTab('profiles')">
+        <svg class="ic"><use href="#i-folder"/></svg><span>Profiles</span></div>
+      <div class="tab admin-only" data-t="users" onclick="switchTab('users')">
+        <svg class="ic"><use href="#i-users"/></svg><span>Users</span></div>
     </div>
-    <div class="card">
-      <div class="card-title" style="margin-bottom:10px">➕ Create 802.1q VLAN Sub-interface</div>
-      <div class="r3">
-        <div><label>Parent Interface</label><select id="vl-parent"></select></div>
-        <div><label>VLAN ID (1-4094)</label>
-          <input type="number" id="vl-vid" min="1" max="4094" placeholder="100"/></div>
-        <div><label>Custom Name (blank = auto)</label>
-          <input type="text" id="vl-name" placeholder="e.g. eth0.100"/></div>
-      </div>
-      <div class="bgrp"><button class="bA" onclick="doCreateVlan()">▶ Create VLAN</button></div>
-      <div id="vl-status" class="sb info"></div>
-    </div>
-  </div>
-
-  <!-- Bridge Manager -->
-  <div id="tab-bridges" class="panel">
-    <div class="card">
-      <div class="card-hdr">
-        <div class="card-title"><span class="dot dot-br"></span>Active Bridges</div>
-        <button class="bB" onclick="reloadBridges(event)">↻ Reload</button>
-      </div>
-      <table class="bt">
-        <thead><tr><th>Bridge</th><th>State</th><th>Members</th><th>Actions</th></tr></thead>
-        <tbody id="br-tbody"><tr><td colspan="4" style="color:var(--muted)">Loading…</td></tr></tbody>
-      </table>
-      <div id="br-status" class="sb info" style="margin-top:7px"></div>
-    </div>
-    <div class="card" style="margin-top:12px">
-      <div class="card-title" style="margin-bottom:9px">➕ Create Bridge</div>
-      <div class="r3">
-        <div><label>Name</label><input id="nb-name" type="text" placeholder="br0" value="br0"/></div>
-        <div><label>Member 1</label><select id="nb-if1"><option value="">-- none --</option></select></div>
-        <div><label>Member 2</label><select id="nb-if2"><option value="">-- none --</option></select></div>
-      </div>
-      <div style="margin-top:6px"><label style="cursor:pointer;display:flex;align-items:center;gap:5px">
-        <input type="checkbox" id="nb-stp"/> STP</label></div>
-      <div class="bgrp"><button class="bA" onclick="doCreateBridge()">▶ Create Bridge</button></div>
-      <div id="nb-status" class="sb info"></div>
-    </div>
-  </div>
-
-  <!-- Profiles -->
-  <div id="tab-profiles" class="panel">
-    <div class="card">
-      <div class="card-title" style="margin-bottom:9px">📁 Profiles</div>
-      <div class="chips" id="p-chips">Loading…</div>
-      <div style="margin-top:12px;display:flex;gap:7px;align-items:flex-end;flex-wrap:wrap">
-        <div><label>Name</label><input id="p-name" type="text" placeholder="my_profile" style="width:130px"/></div>
-        <div><label>From Interface</label><select id="p-iface" style="width:120px"></select></div>
-        <button class="bG" style="margin-bottom:1px" onclick="doSaveProfile()">💾 Save</button>
-      </div>
-      <div id="p-status" class="sb info" style="margin-top:7px"></div>
-    </div>
-    <div class="card" style="margin-top:11px">
-      <div class="card-title" style="margin-bottom:7px">🔍 Preview</div>
-      <pre id="p-preview" style="color:var(--muted);font-size:.79rem">Click a chip to preview</pre>
-    </div>
-
-  <!-- Export / Import Lab Config -->
-  <div class="card" style="margin-top:11px" id="export-import-card">
-    <div class="card-title" style="margin-bottom:9px">📦 Export / Import Lab Config</div>
-    <p style="color:var(--muted);font-size:.8rem;margin:0 0 12px">
-      Export bundles your entire lab setup into one JSON file: network topology,
-      TC impairments, interface labels and all profiles. Import it on any TC Lab
-      host to instantly recreate the same environment.
-    </p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <!-- Export -->
-      <a id="export-btn" href="/api/export"
-         style="background:var(--accent);color:#000;border:none;border-radius:6px;
-                padding:7px 16px;font-size:.8rem;font-weight:700;
-                cursor:pointer;text-decoration:none;display:inline-block">
-        ⬇ Export Config
-      </a>
-      <!-- Import -->
-      <label style="background:#1e3a4f;color:var(--accent);border:1px solid var(--accent);
-                    border-radius:6px;padding:7px 16px;font-size:.8rem;font-weight:700;
-                    cursor:pointer">
-        ⬆ Import Config
-        <input type="file" accept=".json" style="display:none"
-               onchange="doImportConfig(this)">
-      </label>
-    </div>
-    <div id="import-status" class="sb info" style="margin-top:10px;display:none"></div>
-  </div>
-  </div>
-</main>
-
-<!-- Stats modal -->
-<div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()">
-  <div class="mbox">
-    <div class="mhdr"><span id="m-title">Stats</span><span class="x" onclick="closeModal()">✕</span></div>
-    <pre id="m-body">Loading…</pre>
-  </div>
-</div>
-
-<!-- Settings modal -->
-<div class="modal-bg" id="set-modal" onclick="if(event.target===this)closeSettings()">
-  <div class="mbox" style="max-width:430px">
-    <div class="mhdr">⚙ Settings<span class="x" onclick="closeSettings()">✕</span></div>
-    <div style="color:var(--muted);font-size:.78rem;margin-bottom:12px">
-      Logged in as: <b id="who" style="color:var(--accent)"></b>
-      &nbsp;|&nbsp; Role: <b id="who-role" style="color:var(--purple)"></b>
-    </div>
-
-    <!-- Change password -->
-    <div style="font-weight:700;font-size:.84rem;margin-bottom:8px">🔒 Change Password</div>
-    <label>Current</label><input type="password" id="pw-cur" autocomplete="current-password"/>
-    <label>New (min 8)</label><input type="password" id="pw-new" autocomplete="new-password"/>
-    <label>Confirm</label><input type="password" id="pw-cfm" autocomplete="new-password"/>
-    <div class="bgrp" style="margin-top:9px">
-      <button class="bA" onclick="doChangePw()">Save Password</button>
-    </div>
-    <div id="pw-status" class="sb info" style="margin-top:7px"></div>
-
-    <!-- Idle timeout (admin only) -->
-    <div id="timeout-section" style="display:none;margin-top:18px;border-top:1px solid var(--border);padding-top:14px">
-      <div style="font-weight:700;font-size:.84rem;margin-bottom:8px">⏱ Idle Timeout</div>
-      <p style="color:var(--muted);font-size:.75rem;margin-bottom:8px;line-height:1.5">
-        Automatically log out users after N minutes of inactivity.
-        Set to <b>0</b> to disable. A 60-second warning banner appears before logout.
-      </p>
-      <div style="display:flex;align-items:center;gap:9px">
-        <div style="flex:1"><label>Timeout (minutes, 0 = disabled)</label>
-          <input type="number" id="timeout-val" min="0" max="480" style="width:100px"/></div>
-        <button class="bG" style="margin-top:18px" onclick="doSaveTimeout()">💾 Save</button>
-      </div>
-      <div id="timeout-status" class="sb info" style="margin-top:7px"></div>
-    </div>
-
-    <!-- Theme toggle -->
-    <div class="theme-toggle">
-      <span style="font-size:.85rem;font-weight:700">🎨 Theme</span>
-      <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
-        <span style="font-size:.78rem;color:var(--muted)">🌙 Dark</span>
-        <div class="toggle-track" id="theme-track" onclick="toggleTheme()">
-          <div class="toggle-thumb"></div>
+    <div class="sidebar-foot">
+      <div class="user-chip">
+        <div class="avatar" id="side-avatar">–</div>
+        <div class="user-meta">
+          <div class="user-name" id="side-user">…</div>
+          <div class="user-role" id="side-role">–</div>
         </div>
-        <span style="font-size:.78rem;color:var(--muted)">☀️ Light</span>
       </div>
+    </div>
+  </nav>
+
+  <main>
+    <div class="scan-banner" id="scan-banner"></div>
+
+    <!-- ── TC Emulation ───────────────────────────────────────────── -->
+    <div id="tab-tc" class="panel active">
+      <div class="page-hdr">
+        <div>
+          <h2 class="page-title">TC Emulation</h2>
+          <p class="page-sub">Apply latency, jitter, loss, duplication, corruption and rate limits.
+            Applying to a bridge splits the values across its members.</p>
+        </div>
+        <div class="page-actions">
+          <button class="bN" onclick="doRefresh(this)">
+            <svg class="ic"><use href="#i-refresh"/></svg>Reload</button>
+        </div>
+      </div>
+      <div id="iface-grid"></div>
+    </div>
+
+    <!-- ── Interfaces / VLANs ─────────────────────────────────────── -->
+    <div id="tab-vlans" class="panel">
+      <div class="page-hdr">
+        <div>
+          <h2 class="page-title">Interfaces &amp; VLANs</h2>
+          <p class="page-sub">Physical NICs and their 802.1Q sub-interfaces. Expand a NIC to see its VLANs.</p>
+        </div>
+        <div class="page-actions">
+          <button class="bN" onclick="reloadVlans(event)">
+            <svg class="ic"><use href="#i-refresh"/></svg>Reload</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><svg class="ic"><use href="#i-layers"/></svg>Physical Interfaces &amp; VLAN Sub-interfaces</div>
+        </div>
+        <div class="table-wrap">
+          <table class="bt">
+            <thead><tr><th>Interface</th><th>Type</th><th>State</th><th>MTU</th><th>Actions</th></tr></thead>
+            <tbody id="phy-tbody"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card admin-only">
+        <div class="card-hdr">
+          <div class="card-title"><svg class="ic"><use href="#i-plus"/></svg>Create 802.1Q VLAN Sub-interface</div>
+        </div>
+        <div class="r3">
+          <div><label for="vl-parent">Parent Interface</label><select id="vl-parent"></select></div>
+          <div><label for="vl-vid">VLAN ID <span class="muted">(1–4094)</span></label>
+            <input type="number" id="vl-vid" min="1" max="4094" placeholder="100"/></div>
+          <div><label for="vl-name">Custom Name <span class="muted">(blank = auto)</span></label>
+            <input type="text" id="vl-name" placeholder="e.g. eth0.100"/></div>
+        </div>
+        <div class="bgrp"><button class="bA" onclick="doCreateVlan()">
+          <svg class="ic"><use href="#i-plus"/></svg>Create VLAN</button></div>
+        <div id="vl-status" class="sb info"></div>
+      </div>
+    </div>
+
+    <!-- ── Bridge Manager ─────────────────────────────────────────── -->
+    <div id="tab-bridges" class="panel">
+      <div class="page-hdr">
+        <div>
+          <h2 class="page-title">Bridge Manager</h2>
+          <p class="page-sub">Group interfaces into Linux bridges so impairments can be applied to a whole path.</p>
+        </div>
+        <div class="page-actions">
+          <button class="bN" onclick="reloadBridges(event)">
+            <svg class="ic"><use href="#i-refresh"/></svg>Reload</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><svg class="ic"><use href="#i-bridge"/></svg>Active Bridges</div>
+        </div>
+        <div class="table-wrap">
+          <table class="bt">
+            <thead><tr><th>Bridge</th><th>State</th><th>Members</th><th>Actions</th></tr></thead>
+            <tbody id="br-tbody"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div id="br-status" class="sb info"></div>
+      </div>
+
+      <div class="card admin-only">
+        <div class="card-hdr">
+          <div class="card-title"><svg class="ic"><use href="#i-plus"/></svg>Create Bridge</div>
+        </div>
+        <div class="r3">
+          <div><label for="nb-name">Name</label><input id="nb-name" type="text" placeholder="br0" value="br0"/></div>
+          <div><label for="nb-if1">Member 1</label><select id="nb-if1"><option value="">— none —</option></select></div>
+          <div><label for="nb-if2">Member 2</label><select id="nb-if2"><option value="">— none —</option></select></div>
+        </div>
+        <div class="check-row"><input type="checkbox" id="nb-stp"/><label for="nb-stp">Enable STP (Spanning Tree)</label></div>
+        <div class="bgrp"><button class="bA" onclick="doCreateBridge()">
+          <svg class="ic"><use href="#i-plus"/></svg>Create Bridge</button></div>
+        <div id="nb-status" class="sb info"></div>
+      </div>
+    </div>
+
+    <!-- ── Profiles ───────────────────────────────────────────────── -->
+    <div id="tab-profiles" class="panel">
+      <div class="page-hdr">
+        <div>
+          <h2 class="page-title">Profiles &amp; Lab Config</h2>
+          <p class="page-sub">Reusable impairment presets, plus export/import of the entire lab setup.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><svg class="ic"><use href="#i-folder"/></svg>Impairment Profiles</div>
+        </div>
+        <div class="chips" id="p-chips">Loading…</div>
+        <div class="field-row" style="margin-top:16px">
+          <div style="min-width:170px"><label for="p-name">Profile name</label>
+            <input id="p-name" type="text" placeholder="my_profile"/></div>
+          <div style="min-width:150px"><label for="p-iface">Capture from</label>
+            <select id="p-iface"></select></div>
+          <button class="bG" onclick="doSaveProfile()">
+            <svg class="ic"><use href="#i-save"/></svg>Save Profile</button>
+        </div>
+        <div id="p-status" class="sb info"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><svg class="ic"><use href="#i-search"/></svg>Preview</div>
+        </div>
+        <pre id="p-preview" class="code-block">Select a profile to preview its values</pre>
+      </div>
+
+      <div class="card" id="export-import-card">
+        <div class="card-hdr">
+          <div class="card-title"><svg class="ic"><use href="#i-package"/></svg>Export / Import Lab Config</div>
+        </div>
+        <p class="card-note">
+          Export bundles the entire lab setup into one JSON file — network topology, TC
+          impairments, interface labels and all profiles. Import it on any TC Lab host to
+          recreate the same environment.
+        </p>
+        <div class="bgrp" style="margin-top:0">
+          <a class="btn bB" id="export-btn" href="/api/export">
+            <svg class="ic"><use href="#i-download"/></svg>Export Config</a>
+          <label class="btn bN admin-only" id="import-ctl" style="display:none">
+            <svg class="ic"><use href="#i-upload"/></svg>Import Config
+            <input type="file" accept=".json" style="display:none" onchange="doImportConfig(this)"/>
+          </label>
+        </div>
+        <div id="import-status" class="sb info" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- ── Users (admin only; every route behind it is 403 for other roles) ── -->
+    <div id="tab-users" class="panel">
+      <div class="page-hdr">
+        <div>
+          <h2 class="page-title">User Management</h2>
+          <p class="page-sub">Local accounts stored on this host. Only admins can create
+            accounts, reset passwords or change roles. Passwords are hashed and can never
+            be displayed — only replaced.</p>
+        </div>
+        <div class="page-actions">
+          <button class="bN" onclick="loadUsers(event)">
+            <svg class="ic"><use href="#i-refresh"/></svg>Reload</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><svg class="ic"><use href="#i-users"/></svg>Accounts</div>
+        </div>
+        <div class="table-wrap">
+          <table class="bt">
+            <thead><tr><th>Username</th><th>Role</th><th>Actions</th></tr></thead>
+            <tbody id="users-tbody"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div id="users-status" class="sb info"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><svg class="ic"><use href="#i-user-plus"/></svg>Create Account</div>
+        </div>
+        <div class="r3">
+          <div><label for="nu-name">Username</label>
+            <input id="nu-name" type="text" placeholder="operator" autocomplete="off"/></div>
+          <div><label for="nu-pw">Password <span class="muted">(min 8 characters)</span></label>
+            <input id="nu-pw" type="password" autocomplete="new-password"/></div>
+          <div><label for="nu-role">Role</label>
+            <select id="nu-role">
+              <option value="user">user — change impairments only</option>
+              <option value="admin">admin — full control</option>
+            </select></div>
+        </div>
+        <div class="bgrp"><button class="bA" onclick="doCreateUser()">
+          <svg class="ic"><use href="#i-user-plus"/></svg>Create Account</button></div>
+        <div id="nu-status" class="sb info"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <div class="card-title"><svg class="ic"><use href="#i-key"/></svg>Lost the admin password?</div>
+        </div>
+        <p class="card-note">If no admin can sign in, reset the password from a shell on
+          this host. The command prompts for the new password without echoing it, updates
+          only the <code>admin</code> account, and leaves every other account untouched.</p>
+        <pre class="code-block">sudo tc-lab reset-admin-password</pre>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ── Reset password modal (admin) ─────────────────────────────────────── -->
+<div class="modal-bg" id="pwreset-modal" onclick="if(event.target===this)closePwReset()">
+  <div class="mbox" style="max-width:430px" role="dialog" aria-modal="true">
+    <div class="mhdr">
+      <span style="display:flex;align-items:center;gap:8px">
+        <svg class="ic"><use href="#i-key"/></svg>Reset password</span>
+      <span class="x" onclick="closePwReset()" title="Close"><svg class="ic"><use href="#i-x"/></svg></span>
+    </div>
+    <div class="mbody">
+      <p class="card-note">Set a new password for <b id="pwreset-user">—</b>. The current
+        password is not needed and cannot be recovered. Tell the user their new password
+        through a trusted channel.</p>
+      <div class="field-stack">
+        <label for="pwreset-new">New password <span class="muted">(min 8 characters)</span></label>
+        <input type="password" id="pwreset-new" autocomplete="new-password"/>
+        <label for="pwreset-cfm">Confirm new password</label>
+        <input type="password" id="pwreset-cfm" autocomplete="new-password"/>
+      </div>
+      <div class="bgrp"><button class="bA" onclick="doResetPassword()">
+        <svg class="ic"><use href="#i-check"/></svg>Set Password</button></div>
+      <div id="pwreset-status" class="sb info"></div>
     </div>
   </div>
 </div>
 
-<!-- Idle warning bar (bottom of screen) -->
+<!-- ── Stats modal ──────────────────────────────────────────────────── -->
+<div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="mbox" role="dialog" aria-modal="true">
+    <div class="mhdr">
+      <span style="display:flex;align-items:center;gap:8px">
+        <svg class="ic"><use href="#i-chart"/></svg><span id="m-title">Statistics</span></span>
+      <span class="x" onclick="closeModal()" title="Close"><svg class="ic"><use href="#i-x"/></svg></span>
+    </div>
+    <div class="mbody"><pre id="m-body" class="code-block">Loading…</pre></div>
+  </div>
+</div>
+
+<!-- ── Settings modal ───────────────────────────────────────────────── -->
+<div class="modal-bg" id="set-modal" onclick="if(event.target===this)closeSettings()">
+  <div class="mbox" style="max-width:480px" role="dialog" aria-modal="true">
+    <div class="mhdr">
+      <span style="display:flex;align-items:center;gap:8px">
+        <svg class="ic"><use href="#i-settings"/></svg>Settings</span>
+      <span class="x" onclick="closeSettings()" title="Close"><svg class="ic"><use href="#i-x"/></svg></span>
+    </div>
+    <div class="mbody">
+
+      <div class="id-row">
+        <div class="avatar" id="set-avatar">–</div>
+        <div class="user-meta">
+          <div class="user-name">Signed in as <b id="who">…</b></div>
+          <div class="user-role">Role: <span id="who-role">–</span></div>
+        </div>
+      </div>
+
+      <div class="msec">
+        <div class="msec-title"><svg class="ic"><use href="#i-lock"/></svg>Change Password</div>
+        <div class="field-stack">
+          <label for="pw-cur">Current password</label>
+          <input type="password" id="pw-cur" autocomplete="current-password"/>
+          <label for="pw-new">New password <span class="muted">(min 8 characters)</span></label>
+          <input type="password" id="pw-new" autocomplete="new-password"/>
+          <label for="pw-cfm">Confirm new password</label>
+          <input type="password" id="pw-cfm" autocomplete="new-password"/>
+        </div>
+        <div class="bgrp"><button class="bA" onclick="doChangePw()">
+          <svg class="ic"><use href="#i-check"/></svg>Update Password</button></div>
+        <div id="pw-status" class="sb info"></div>
+      </div>
+
+      <div class="msec" id="timeout-section" style="display:none">
+        <div class="msec-title"><svg class="ic"><use href="#i-clock"/></svg>Idle Timeout</div>
+        <p class="card-note" style="margin-bottom:12px">
+          Automatically sign out after N minutes of inactivity. Set to <b>0</b> to disable.
+          A 60-second warning appears first.
+        </p>
+        <div class="field-row">
+          <div style="flex:1;min-width:150px"><label for="timeout-val">Timeout (minutes)</label>
+            <input type="number" id="timeout-val" min="0" max="480"/></div>
+          <button class="bG" onclick="doSaveTimeout()">
+            <svg class="ic"><use href="#i-save"/></svg>Save</button>
+        </div>
+        <div id="timeout-status" class="sb info"></div>
+      </div>
+
+      <div class="msec">
+        <div class="theme-row">
+          <div class="msec-title" style="margin:0"><svg class="ic"><use href="#i-sun"/></svg>Appearance</div>
+          <div class="seg">
+            <button class="seg-btn" id="seg-dark" onclick="applyTheme('dark')">
+              <svg class="ic ic-sm"><use href="#i-moon"/></svg>Dark</button>
+            <button class="seg-btn" id="seg-light" onclick="applyTheme('light')">
+              <svg class="ic ic-sm"><use href="#i-sun"/></svg>Light</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── Idle warning ─────────────────────────────────────────────────── -->
 <div id="idle-bar">
-  <span>⚠ Idle timeout: logging out in <b id="idle-countdown">60</b>s — click anywhere to stay</span>
-  <button class="bG" onclick="resetIdleTimer()">Stay Logged In</button>
+  <svg class="ic ic-lg"><use href="#i-alert"/></svg>
+  <span>Idle timeout — signing out in <b id="idle-countdown">60</b>s</span>
+  <button class="bA" style="margin-left:auto" onclick="resetIdleTimer()">Stay signed in</button>
+</div>
+
+<!-- ── Bridge member drawer ─────────────────────────────────────────── -->
+<div class="br-drawer-overlay" id="br-drawer-overlay" onclick="closeBrDrawer()"></div>
+<div class="br-drawer" id="br-drawer" role="dialog" aria-modal="true">
+  <div class="br-drawer-hdr" id="br-drawer-hdr"></div>
+  <div class="br-drawer-body" id="br-drawer-body"></div>
 </div>
 
 <script>
@@ -419,16 +860,22 @@ async function loadConfig(){
 }
 
 // ── API helper ─────────────────────────────────────────────────────────────
+const CSRF=document.querySelector('meta[name="csrf-token"]')?.content||'';
 async function api(path,method='GET',body=null){
   try{
     const url=method==='GET'?`${path}${path.includes('?')?'&':'?'}_=${Date.now()}`:path;
-    const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},
+    const headers={'Content-Type':'application/json'};
+    if(method!=='GET') headers['X-CSRFToken']=CSRF;
+    const r=await fetch(url,{method,headers,
       cache:'no-store',body:body?JSON.stringify(body):null});
     if(r.status===401){location.href='/login';return{ok:false};}
     return await r.json();
   }catch(e){return{ok:false,stderr:String(e)};}
 }
 function sb(id,msg,cls){const e=document.getElementById(id);if(e){e.textContent=msg;e.className='sb '+cls;}}
+// Escape any value that came from the kernel / another user before it goes into innerHTML.
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>(
+  {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===name));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
@@ -436,19 +883,22 @@ function switchTab(name){
   if(name==='bridges'){api('/api/interfaces').then(d=>{if(!d)return;bridges=d.bridges||{};unbridged=d.unbridged||[];ifMeta=d.meta||{};renderBrTab();});}
   if(name==='profiles') renderProfiles();
   if(name==='vlans') loadVlanTab();
+  if(name==='users') loadUsers();
 }
 
 async function reloadBridges(evt){
-  const b=evt.target;  /* capture before any await — currentTarget goes null after async */
-  b.textContent='↻ …';b.disabled=true;
+  /* closest('button') — the click may land on the inner <svg>; capture before any
+     await, currentTarget goes null after async. Spin the icon, keep the markup. */
+  const b=evt.target.closest('button');
+  b.classList.add('spinning');b.disabled=true;
   const d=await api('/api/interfaces');
   if(d){bridges=d.bridges||{};unbridged=d.unbridged||[];ifMeta=d.meta||{};ifaces=d.interfaces||[];tcState=d.state||{};}
   renderBrTab();
-  b.textContent='↻ Reload';b.disabled=false;
+  b.classList.remove('spinning');b.disabled=false;
 }
 async function reloadVlans(evt){
-  const b=evt.target;  /* capture before any await */
-  b.textContent='↻ …';b.disabled=true;
+  const b=evt.target.closest('button');
+  b.classList.add('spinning');b.disabled=true;
   const d=await api('/api/vlans');
   if(d){
     vlanData=d;
@@ -457,11 +907,11 @@ async function reloadVlans(evt){
     const vlanNames=new Set((d.vlans||[]).map(v=>v.name));
     const brNames=new Set(d.bridges||[]);
     const eligible=(d.physical||[]).filter(p=>!vlanNames.has(p.name)&&!brNames.has(p.name)&&!p.name.includes('.'));
-    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${p.name}</option>`).join(''):'<option disabled>No physical NICs found</option>';
+    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';
   }
   const d2=await api('/api/interfaces');
   if(d2){bridges=d2.bridges||{};unbridged=d2.unbridged||[];ifMeta=d2.meta||{};ifaces=d2.interfaces||[];}
-  b.textContent='↻ Reload';b.disabled=false;
+  b.classList.remove('spinning');b.disabled=false;
 }
 
 // ── TC Card builder ────────────────────────────────────────────────────────
@@ -476,48 +926,49 @@ function buildCard(iface){
   let tags='';
   if(isBr){const mbs=(bridges[iface]||{}).members||[];
     tags+=`<span class="tag tY">bridge</span><span class="tag tB">${mbs.length} members</span>`;}
-  if(isMb) tags+=`<span class="tag tB">→${meta.master}</span>`;
+  if(isMb) tags+=`<span class="tag tB">→${esc(meta.master)}</span>`;
   if(!up)  tags+=`<span class="tag tR">down</span>`;
   if(hasTC)tags+=`<span class="tag tG">● tc active</span>`;
   let banner='';
   if(isBr){const mbs=(bridges[iface]||{}).members||[],n=mbs.length||2;
-    banner=`<div class="wbanner" style="background:#2a1a00;border:1px solid var(--orange);color:var(--orange)">
-    ⚡ Apply splits values across ${n} members (${(150/n).toFixed(0)}ms each for 150ms target RTT).
-    </div>`;}
-  else if(isMb){banner=`<div class="wbanner" style="background:#001520;border:1px solid var(--accent);color:var(--accent)">
-    Member of <b>${meta.master}</b> — shows split value applied by bridge.</div>`;}
-  return `<div class="card ${isBr?'is-bridge':''} ${isMb?'is-member':''} ${hasTC?'has-tc':''}" id="card-${id}">
+    banner=`<div class="wbanner warn">Apply splits values across ${n} member${n!==1?'s':''}
+      — e.g. a 150&nbsp;ms target becomes ${(150/n).toFixed(0)}&nbsp;ms each.</div>`;}
+  else if(isMb){banner=`<div class="wbanner info">Member of <b>${esc(meta.master)}</b>
+      — shows the split value applied by the bridge.</div>`;}
+  const fld=(k,lab,unit,mx,st)=>`<div class="field"><label for="${id}_${k}">${lab}</label>
+      <div class="input-wrap"><input type="number" id="${id}_${k}" min="0" max="${mx}"${st?` step="${st}"`:''}
+        value="${v({lat:'latency_ms',jit:'jitter_ms',loss:'loss_pct',dup:'duplicate_pct',
+                    cor:'corrupt_pct',rate:'rate_mbit'}[k])}"/><span class="unit">${unit}</span></div></div>`;
+  return `<div class="card iface-card ${isBr?'is-bridge':''} ${isMb?'is-member':''} ${hasTC?'has-tc':''}" id="card-${id}">
   <div class="card-hdr">
-    <div class="card-title"><span class="dot ${dot}"></span>${iface} ${tags}</div>
-    <button class="bY" style="padding:3px 7px;font-size:.7rem" onclick="showStats('${iface}')">📊</button>
+    <div class="card-title"><span class="dot ${dot}"></span><span class="iface-name">${esc(iface)}</span>${tags}</div>
+    <button class="icon-btn sm" title="Interface statistics" onclick="showStats('${iface}')">
+      <svg class="ic ic-sm"><use href="#i-chart"/></svg></button>
   </div>
   <div class="label-row">
-    <span style="color:var(--muted);font-size:.7rem">📝</span>
-    <input class="label-input" id="lbl-${id}" placeholder="Add comment…"
-      value="${lbl.replace(/"/g,'&quot;')}"
+    <svg class="ic"><use href="#i-tag"/></svg>
+    <input class="label-input" id="lbl-${id}" placeholder="Add a note…"
+      value="${esc(lbl)}"
       onblur="saveLabel('${iface}')"
       onkeydown="if(event.key==='Enter'){saveLabel('${iface}');this.blur();}"/>
-    <button class="label-save" onclick="saveLabel('${iface}')">✓</button>
+    <button class="label-save" title="Save note" onclick="saveLabel('${iface}')">
+      <svg class="ic ic-sm"><use href="#i-check"/></svg></button>
   </div>
   ${banner}
-  <div class="r2">
-    <div><label>Latency (ms)</label><input type="number" id="${id}_lat" min="0" max="60000" value="${v('latency_ms')}"/></div>
-    <div><label>Jitter (ms)</label><input type="number" id="${id}_jit" min="0" max="10000" value="${v('jitter_ms')}"/></div>
-  </div>
-  <div class="r2">
-    <div><label>Loss (%)</label><input type="number" id="${id}_loss" min="0" max="100" step="0.1" value="${v('loss_pct')}"/></div>
-    <div><label>Duplicate (%)</label><input type="number" id="${id}_dup" min="0" max="100" step="0.1" value="${v('duplicate_pct')}"/></div>
-  </div>
-  <div class="r2">
-    <div><label>Corrupt (%)</label><input type="number" id="${id}_cor" min="0" max="100" step="0.1" value="${v('corrupt_pct')}"/></div>
-    <div><label>Rate mbit (0=∞)</label><input type="number" id="${id}_rate" min="0" max="100000" step="0.1" value="${v('rate_mbit')}"/></div>
+  <div class="fields" style="margin-top:12px">
+    ${fld('lat','Latency','ms',60000)}
+    ${fld('jit','Jitter','ms',10000)}
+    ${fld('loss','Loss','%',100,'0.1')}
+    ${fld('dup','Duplicate','%',100,'0.1')}
+    ${fld('cor','Corrupt','%',100,'0.1')}
+    ${fld('rate','Rate','mbit',100000,'0.1')}
   </div>
   <div class="bgrp">
-    <button class="bA" onclick="doApply('${iface}')">▶ Apply</button>
-    <button class="bN" onclick="doReset('${iface}')">⬛ Reset</button>
-    <button class="bB" onclick="openLoadProfile('${iface}')">📂 Profile</button>
+    <button class="bA" onclick="doApply('${iface}')"><svg class="ic"><use href="#i-play"/></svg>Apply</button>
+    <button class="bN" onclick="doReset('${iface}')"><svg class="ic"><use href="#i-stop"/></svg>Reset</button>
+    <button class="bB" onclick="openLoadProfile('${iface}')"><svg class="ic"><use href="#i-folder"/></svg>Profile</button>
   </div>
-  <div id="sb-${id}" class="sb ${hasTC?'ok':'info'}">${hasTC?'✔ tc active — loaded from scan':''}</div>
+  <div id="sb-${id}" class="sb ${hasTC?'ok':'info'}">${hasTC?'tc active — loaded from scan':''}</div>
   </div>`;}
 
 // ── Bridge member drawer ───────────────────────────────────────────────────
@@ -529,16 +980,16 @@ function openBrDrawer(br){
   const liveTC=members.some(m=>Object.values(tcState[m]||{}).some(x=>x>0))
     ?'<span class="tag tG">● tc active</span>':'';
   document.getElementById('br-drawer-hdr').innerHTML=`
-    <span style="font-size:1rem;font-weight:700">🌉 ${br}</span>
-    ${st}
+    <svg class="ic ic-lg" style="color:var(--amber)"><use href="#i-bridge"/></svg>
+    <span style="font-size:.98rem;font-weight:650">${esc(br)}</span>
     <span class="tag tB">${members.length} member${members.length!==1?'s':''}</span>
-    ${liveTC}
-    <button class="bN" style="margin-left:auto;padding:4px 11px;font-size:.78rem"
-      onclick="closeBrDrawer()">✕ Close</button>`;
+    ${st}${liveTC}
+    <button class="icon-btn" style="margin-left:auto" title="Close" onclick="closeBrDrawer()">
+      <svg class="ic"><use href="#i-x"/></svg></button>`;
   // Body
   const body=document.getElementById('br-drawer-body');
   if(!members.length){
-    body.innerHTML='<div style="color:var(--muted);text-align:center;padding:50px 0;font-size:.88rem">No members — add interfaces in Bridge Manager</div>';
+    body.innerHTML='<div class="empty" style="grid-column:1/-1">No members — add interfaces in Bridge Manager</div>';
   } else {
     body.innerHTML=members.map(m=>buildCard(m)).join('');
   }
@@ -560,6 +1011,7 @@ function updateLiveBadge(){
   const lb=document.getElementById('b-live');
   if(liveCnt>0){lb.style.display='';lb.textContent=`● ${liveCnt} tc active`;}
   else lb.style.display='none';
+  return liveCnt;
 }
 
 // ── TC Grid — bridge card in grid + drawer for members ─────────────────────
@@ -582,20 +1034,22 @@ function renderTCGrid(){
       const memberChips=members.length
         ?members.map(m=>{
             const hasTC=Object.values(tcState[m]||{}).some(x=>x>0);
-            return `<span class="tag ${hasTC?'tG':'tB'}" style="font-size:.68rem">${m}${hasTC?' ●':''}</span>`;
+            return `<span class="tag ${hasTC?'tG':'tB'}" style="font-size:.68rem">${esc(m)}${hasTC?' ●':''}</span>`;
           }).join('')
-        :'<span style="color:var(--muted);font-size:.7rem">no members</span>';
+        :'<span class="muted" style="font-size:.72rem">no members</span>';
       html+=`<div class="bridge-group">
         <div class="bridge-group-hdr">
-          <span>🌉 ${br}</span> ${brState}
+          <svg class="ic"><use href="#i-bridge"/></svg>
+          <span class="iface-name">${esc(br)}</span> ${brState}
           <span class="tag tB">${members.length} member${members.length!==1?'s':''}</span>
           ${liveTC}
-          ${members.length?`<button class="br-open-btn" onclick="openBrDrawer('${br}')">⊞ Member controls</button>`:''}
+          ${members.length?`<button class="br-open-btn" onclick="openBrDrawer('${br}')">
+            <svg class="ic ic-sm" style="vertical-align:-2px"><use href="#i-grid"/></svg> Member controls</button>`:''}
+          <button class="icon-btn sm" title="Bridge statistics" onclick="showStats('${br}')"
+            ${members.length?'':'style="margin-left:auto"'}>
+            <svg class="ic ic-sm"><use href="#i-chart"/></svg></button>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:5px;padding:6px 4px 4px;
-          border-bottom:1px dashed var(--border);margin-bottom:8px">
-          ${memberChips}
-        </div>
+        <div class="member-chips"><span class="ms-label">Members</span>${memberChips}</div>
         <div class="bridge-group-grid">${buildCard(br)}</div>
       </div>`;
     }
@@ -605,9 +1059,10 @@ function renderTCGrid(){
   // 2. Standalone interfaces
   const alone=ifaces.filter(i=>!done.has(i));
   if(alone.length){
-    html+=`<div class="section-hdr">🔌 Standalone Interfaces</div>
+    html+=`<div class="section-hdr">Standalone Interfaces</div>
     <div class="standalone-grid">${alone.map(i=>buildCard(i)).join('')}</div>`;
   }
+  if(!html) html='<div class="empty">No interfaces detected.</div>';
   grid.innerHTML=html;
 }
 
@@ -674,6 +1129,7 @@ function buildVlanTree(physical,vlans,bridgeNames){
   const byParent   = {};
   vlans.forEach(v=>{(byParent[v.parent]=byParent[v.parent]||[]).push(v);});
   let rows='';
+  const admin=ROLE==='admin';
 
   // Render physical rows — exclude anything that is a VLAN sub-interface
   // (those are already shown as children). Bridges are kept but labeled correctly.
@@ -683,55 +1139,55 @@ function buildVlanTree(physical,vlans,bridgeNames){
     const kids  = byParent[p.name]||[];
     const kidId = `vk-${p.name.replace(/[^a-z0-9]/gi,'_')}`;
     const toggle = kids.length
-      ? `<button class="toggle-btn" onclick="toggleVlans('${kidId}',this)">▶ ${kids.length} VLAN${kids.length>1?'s':''}</button>` : '';
+      ? `<button class="toggle-btn" onclick="toggleVlans('${kidId}',this)">▸ ${kids.length} VLAN${kids.length>1?'s':''}</button>` : '';
     // Type badge
     const typeTag = isBr
       ? `<span class="tag tY">Bridge</span>`
       : `<span class="tag tB">Physical NIC</span>`;
+    const stTag = s=>s?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>';
     rows+=`<tr class="phy-row">
-      <td>${p.name}</td>
+      <td><span class="iface-name">${esc(p.name)}</span></td>
       <td>${typeTag} ${toggle}</td>
-      <td>${up?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>'}</td>
-      <td style="color:var(--muted)">${p.mtu}</td>
-      <td>
-        <button class="bG" style="padding:2px 5px;font-size:.65rem" onclick="doIfUp('${p.name}',true)">▲ Up</button>
-        <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doIfUp('${p.name}',false)">▼ Dn</button>
-      </td></tr>`;
+      <td>${stTag(up)}</td>
+      <td class="muted mono">${esc(p.mtu)}</td>
+      <td><div class="actions">${admin?`
+        <button class="bG btn-xs" title="Bring up" onclick="doIfUp('${p.name}',true)"><svg class="ic"><use href="#i-up"/></svg>Up</button>
+        <button class="bR btn-xs" title="Bring down" onclick="doIfUp('${p.name}',false)"><svg class="ic"><use href="#i-down"/></svg>Down</button>
+      `:'<span class="muted">—</span>'}</div></td></tr>`;
     // VLAN child rows (hidden by default)
     kids.forEach(v=>{
       const vup=v.state==='up';
-      const mb=v.master?`<span class="tag tB">→${v.master}</span>`:'';
+      const mb=v.master?`<span class="tag tB">→ ${esc(v.master)}</span>`:'';
       rows+=`<tr class="vlan-row ${kidId}" style="display:none">
-        <td>${v.name} ${mb}</td>
-        <td><span class="tag tP">Sub-Interface</span> <span class="tag tP" style="opacity:.7">802.1Q ID ${v.vlan_id}</span></td>
-        <td>${vup?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>'}</td>
-        <td style="color:var(--muted)">${v.mtu}</td>
-        <td style="white-space:nowrap">
-          <button class="bG" style="padding:2px 5px;font-size:.65rem" onclick="doVlanUp('${v.name}',true)">▲</button>
-          <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doVlanUp('${v.name}',false)">▼</button>
-          <button class="bY" style="padding:2px 5px;font-size:.65rem" onclick="showVlanStats('${v.name}')">📊</button>
-          <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doDelVlan('${v.name}')">🗑</button>
-        </td></tr>`;
+        <td><span class="iface-name">${esc(v.name)}</span> ${mb}</td>
+        <td><span class="tag tP">802.1Q · VLAN ${esc(v.vlan_id)}</span></td>
+        <td>${stTag(vup)}</td>
+        <td class="muted mono">${esc(v.mtu)}</td>
+        <td><div class="actions">
+          ${admin?`<button class="bG btn-xs" title="Bring up" onclick="doVlanUp('${v.name}',true)"><svg class="ic"><use href="#i-up"/></svg></button>
+          <button class="bR btn-xs" title="Bring down" onclick="doVlanUp('${v.name}',false)"><svg class="ic"><use href="#i-down"/></svg></button>`:''}
+          <button class="bY btn-xs" title="Statistics" onclick="showVlanStats('${v.name}')"><svg class="ic"><use href="#i-chart"/></svg></button>
+          ${admin?`<button class="bR btn-xs" title="Delete VLAN" onclick="doDelVlan('${v.name}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:''}
+        </div></td></tr>`;
     });
   });
   // Orphan VLANs (parent not found in physical list)
   vlans.filter(v=>!physical.find(p=>p.name===v.parent)).forEach(v=>{
     const vup=v.state==='up';
-    rows+=`<tr class="vlan-row" style="background:#1a1010">
-      <td>${v.name} <span class="tag tR">orphan</span></td>
-      <td><span class="tag tP">Sub-Interface</span> VLAN ${v.vlan_id} (parent: ${v.parent})</td>
+    rows+=`<tr class="vlan-row orphan">
+      <td><span class="iface-name">${esc(v.name)}</span> <span class="tag tR">orphan</span></td>
+      <td><span class="tag tP">802.1Q · VLAN ${esc(v.vlan_id)}</span> <span class="muted">parent: ${esc(v.parent)}</span></td>
       <td>${vup?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>'}</td>
-      <td style="color:var(--muted)">${v.mtu}</td>
-      <td><button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doDelVlan('${v.name}')">🗑</button></td></tr>`;
+      <td class="muted mono">${esc(v.mtu)}</td>
+      <td><div class="actions">${admin?`<button class="bR btn-xs" title="Delete VLAN" onclick="doDelVlan('${v.name}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:'<span class="muted">—</span>'}</div></td></tr>`;
   });
-  return rows;
+  return rows||'<tr><td colspan="5" class="empty">No physical interfaces found.</td></tr>';
 }
 function toggleVlans(cls,btn){
   const rows=document.querySelectorAll('.'+cls);
   const hidden=rows[0]?.style.display==='none';
   rows.forEach(r=>r.style.display=hidden?'':'none');
-  btn.textContent=hidden?('▼ '+rows.length+' VLAN'+(rows.length>1?'s':''))
-                        :('▶ '+rows.length+' VLAN'+(rows.length>1?'s':''));}
+  btn.textContent=(hidden?'▾ ':'▸ ')+rows.length+' VLAN'+(rows.length>1?'s':'');}
 async function loadVlanTab(){
   const d=await api('/api/vlans');if(!d||d.ok===false) return;
   vlanData=d;
@@ -746,7 +1202,7 @@ async function loadVlanTab(){
     !p.name.includes('.')       // not a sub-interface by name
   );
   ps.innerHTML=eligible.length
-    ?eligible.map(p=>`<option>${p.name}</option>`).join('')
+    ?eligible.map(p=>`<option>${esc(p.name)}</option>`).join('')
     :'<option disabled>No physical NICs found</option>';}
 async function doCreateVlan(){
   const parent=document.getElementById('vl-parent').value;
@@ -782,23 +1238,26 @@ async function showVlanStats(name){
 function renderBrTab(){
   ['nb-if1','nb-if2'].forEach(sid=>{
     const sel=document.getElementById(sid),cur=sel.value;
-    sel.innerHTML='<option value="">-- none --</option>';
-    unbridged.forEach(i=>sel.innerHTML+=`<option${i===cur?' selected':''}>${i}</option>`);});
+    sel.innerHTML='<option value="">— none —</option>';
+    unbridged.forEach(i=>sel.innerHTML+=`<option${i===cur?' selected':''}>${esc(i)}</option>`);});
   const tbody=document.getElementById('br-tbody');const entries=Object.entries(bridges);
-  if(!entries.length){tbody.innerHTML='<tr><td colspan="4" style="color:var(--muted);padding:10px">No bridges</td></tr>';return;}
+  if(!entries.length){tbody.innerHTML='<tr><td colspan="4" class="empty">No bridges configured yet.</td></tr>';return;}
+  const admin=ROLE==='admin';
   tbody.innerHTML=entries.map(([br,info])=>{
     const st=info.state==='up'?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>';
     const mbs=info.members||[];
-    const mbHtml=mbs.map(m=>`<span class="tag tB">${m}</span><button class="bR"
-      style="padding:1px 5px;font-size:.65rem" onclick="doRemoveMember('${br}','${m}')">✕</button>`).join(' ');
-    return`<tr><td style="font-weight:700;color:var(--yellow)">${br}</td>
-      <td>${st}
-        <button class="bG" style="padding:2px 5px;font-size:.65rem;margin-left:4px" onclick="doBrUp('${br}',true)">▲</button>
-        <button class="bR" style="padding:2px 5px;font-size:.65rem" onclick="doBrUp('${br}',false)">▼</button></td>
-      <td>${mbHtml||'<span style="color:var(--muted)">none</span>'}
-        <button class="bB" style="padding:2px 5px;font-size:.65rem;margin-left:4px" onclick="promptAddMember('${br}')">+</button></td>
-      <td><button class="bY" style="padding:3px 6px;font-size:.7rem" onclick="showBrStats('${br}')">📊</button>
-          <button class="bR" style="padding:3px 6px;font-size:.7rem" onclick="doDelBridge('${br}')">🗑</button></td></tr>`;
+    const mbHtml=mbs.map(m=>`<span class="tag tB">${esc(m)}${admin?`<button class="chip-del"
+      title="Remove from bridge" onclick="doRemoveMember('${br}','${m}')"><svg class="ic ic-sm"><use href="#i-x"/></svg></button>`:''}</span>`).join(' ');
+    return`<tr>
+      <td><span class="iface-name" style="color:var(--amber)">${esc(br)}</span></td>
+      <td><div class="actions">${st}
+        ${admin?`<button class="bG btn-xs" title="Bring up" onclick="doBrUp('${br}',true)"><svg class="ic"><use href="#i-up"/></svg></button>
+        <button class="bR btn-xs" title="Bring down" onclick="doBrUp('${br}',false)"><svg class="ic"><use href="#i-down"/></svg></button>`:''}</div></td>
+      <td><div class="actions">${mbHtml||'<span class="muted">none</span>'}
+        ${admin?`<button class="bB btn-xs" title="Add member" onclick="promptAddMember('${br}')"><svg class="ic"><use href="#i-plus"/></svg></button>`:''}</div></td>
+      <td><div class="actions">
+        <button class="bY btn-xs" title="Bridge statistics" onclick="showBrStats('${br}')"><svg class="ic"><use href="#i-chart"/></svg></button>
+        ${admin?`<button class="bR btn-xs" title="Delete bridge" onclick="doDelBridge('${br}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:''}</div></td></tr>`;
   }).join('');}
 async function _refreshBr(){
   const d=await api('/api/interfaces');
@@ -810,7 +1269,7 @@ async function _refreshVl(){
     document.getElementById('phy-tbody').innerHTML=buildVlanTree(d.physical||[],d.vlans||[],d.bridges||[]);
     const ps=document.getElementById('vl-parent');const vlanNames=new Set((d.vlans||[]).map(v=>v.name));const brNames=new Set(d.bridges||[]);
     const eligible=(d.physical||[]).filter(p=>!vlanNames.has(p.name)&&!brNames.has(p.name)&&!p.name.includes('.'));
-    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${p.name}</option>`).join(''):'<option disabled>No physical NICs found</option>';}}
+    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';}}
 async function doCreateBridge(){
   const name=document.getElementById('nb-name').value.trim();
   const if1=document.getElementById('nb-if1').value,if2=document.getElementById('nb-if2').value;
@@ -854,10 +1313,14 @@ async function showBrStats(name){
 async function renderProfiles(){
   profiles=await api('/api/profiles');const names=Object.keys(profiles);
   const chips=document.getElementById('p-chips');
-  chips.innerHTML=names.length?names.map(n=>`<span class="chip" onclick="prevProfile('${n}')">${n}</span>
-    <button class="bR" style="padding:1px 5px;font-size:.65rem" onclick="doDelProfile('${n}')">✕</button>`).join('')
-    :'<span style="color:var(--muted)">No profiles yet</span>';}
-function prevProfile(n){document.getElementById('p-preview').textContent=JSON.stringify(profiles[n],null,2);}
+  chips.innerHTML=names.length?names.map(n=>`<span class="chip" id="chip-${n.replace(/[^a-z0-9]/gi,'_')}"
+    onclick="prevProfile('${n}')">${esc(n)}<button class="chip-del" title="Delete profile"
+    onclick="event.stopPropagation();doDelProfile('${n}')"><svg class="ic ic-sm"><use href="#i-x"/></svg></button></span>`).join('')
+    :'<span class="muted" style="font-size:.82rem">No profiles yet — save one from an interface card.</span>';}
+function prevProfile(n){
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));
+  document.getElementById('chip-'+n.replace(/[^a-z0-9]/gi,'_'))?.classList.add('sel');
+  document.getElementById('p-preview').textContent=JSON.stringify(profiles[n],null,2);}
 async function doSaveProfile(){
   const name=document.getElementById('p-name').value.trim();
   const iface=document.getElementById('p-iface').value;
@@ -871,8 +1334,9 @@ async function doDelProfile(name){await api(`/api/profiles/${name}`,'DELETE');re
 function applyTheme(t){
   document.documentElement.setAttribute('data-theme',t);
   localStorage.setItem('tc-theme',t);
-  const track=document.getElementById('theme-track');
-  if(track) track.classList.toggle('on',t==='light');}
+  const d=document.getElementById('seg-dark'),l=document.getElementById('seg-light');
+  if(d) d.classList.toggle('on',t!=='light');
+  if(l) l.classList.toggle('on',t==='light');}
 function toggleTheme(){
   const cur=document.documentElement.getAttribute('data-theme')||'dark';
   applyTheme(cur==='dark'?'light':'dark');}
@@ -883,6 +1347,7 @@ async function openSettings(){
   const r=await api('/api/auth/whoami');
   document.getElementById('who').textContent=r.username||'?';
   document.getElementById('who-role').textContent=r.role||'user';
+  document.getElementById('set-avatar').textContent=(r.username||'?').charAt(0).toUpperCase();
   ['pw-cur','pw-new','pw-cfm'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   sb('pw-status','','info');
   // Show timeout section only for admin
@@ -918,9 +1383,17 @@ async function loadAll(){
   // Count only real interface-level tc entries:
   //   exclude bridge keys (their tc is applied to members, not the bridge itself)
   //   exclude entries where all values are 0 (no actual impairment)
-  document.getElementById('b-if').textContent=`${ifaces.length} iface${ifaces.length!==1?'s':''}`;
+  // Bridges have their own badge, so exclude them here — otherwise the two
+  // badges overlap and "8 ifaces / 2 bridges" reads as 10 things when the host
+  // has 8 devices, 2 of which are the bridges. What is left is what you can
+  // impair directly: physical NICs and VLAN sub-interfaces.
+  const ifCnt=ifaces.filter(i=>!bridges[i]).length;
+  const bIf=document.getElementById('b-if');
+  bIf.textContent=`${ifCnt} iface${ifCnt!==1?'s':''}`;
+  bIf.title=`${ifCnt} interface${ifCnt!==1?'s':''} (physical NICs and VLAN sub-interfaces, `
+           +`excluding ${brCnt} bridge${brCnt!==1?'s':''} and loopback)`;
   document.getElementById('b-br').textContent=`${brCnt} bridge${brCnt!==1?'s':''}`;
-  updateLiveBadge();
+  const liveCnt=updateLiveBadge();
   renderTCGrid();
   const banner=document.getElementById('scan-banner');
   if(liveCnt>0&&!banner.dataset.shown){
@@ -928,7 +1401,7 @@ async function loadAll(){
     banner.textContent=`🔍 Startup: detected tc on ${Object.keys(tcState).join(', ')}`;
     banner.dataset.shown='1';setTimeout(()=>banner.style.display='none',9000);}
   const ps=document.getElementById('p-iface');
-  if(ps) ps.innerHTML=ifaces.map(i=>`<option>${i}</option>`).join('');
+  if(ps) ps.innerHTML=ifaces.map(i=>`<option>${esc(i)}</option>`).join('');
   renderTCGrid();
   renderBrTab();
   loadVlanTab();
@@ -965,15 +1438,121 @@ async function doImportConfig(input){
   input.value=''; // reset file picker
 }
 
+// Role gate — reveal admin-only controls once whoami confirms. Server still
+// enforces (403); this only declutters the UI for the "user" role.
+let ROLE='user';
+async function loadRole(){
+  const r=await api('/api/auth/whoami');
+  ROLE=(r&&r.role)||'user';
+  const name=(r&&r.username)||'—';
+  document.body.classList.toggle('is-admin',ROLE==='admin');
+  document.getElementById('side-user').textContent=name;
+  document.getElementById('side-role').textContent=ROLE;
+  document.getElementById('side-avatar').textContent=name.charAt(0).toUpperCase();
+  const imp=document.getElementById('import-ctl');
+  if(imp) imp.style.display=ROLE==='admin'?'inline-flex':'none';
+  renderBrTab();      // re-render so admin-only action buttons appear/disappear
+  loadVlanTab();
+}
+
+// ── User management (admin only) ───────────────────────────────────────────
+// The server gates every one of these routes with @admin_required; hiding the
+// tab is only decluttering. No response here ever contains a password hash.
+let USERS=[];
+async function loadUsers(evt){
+  const b=evt&&evt.target.closest('button');
+  if(b){b.classList.add('spinning');b.disabled=true;}
+  const r=await api('/api/users');
+  const tb=document.getElementById('users-tbody');
+  if(!r||!r.ok){
+    tb.innerHTML='<tr><td colspan="3" class="empty">Could not load accounts.</td></tr>';
+  }else{
+    USERS=r.users||[];
+    tb.innerHTML=USERS.map(u=>{
+      const self=u.username===r.self;
+      const roleSel=(r.roles||['admin','user']).map(role=>
+        `<option value="${role}"${role===u.role?' selected':''}>${role}</option>`).join('');
+      return `<tr>
+        <td><span class="iface-name">${esc(u.username)}</span>
+            ${self?'<span class="tag tB">you</span>':''}</td>
+        <td><select style="width:auto;min-width:96px;padding:4px 26px 4px 8px;font-size:.76rem"
+              onchange="doSetRole('${u.username}',this.value,this)"
+              ${self?'disabled title="You cannot change your own role"':''}>${roleSel}</select></td>
+        <td><div class="actions">
+          <button class="bY btn-xs" title="Reset this user's password"
+            onclick="openPwReset('${u.username}')">
+            <svg class="ic"><use href="#i-key"/></svg>Reset password</button>
+          <button class="bR btn-xs" title="${self?'You cannot delete your own account':'Delete account'}"
+            onclick="doDeleteUser('${u.username}')" ${self?'disabled':''}>
+            <svg class="ic"><use href="#i-trash"/></svg></button>
+        </div></td></tr>`;
+    }).join('')||'<tr><td colspan="3" class="empty">No accounts.</td></tr>';
+  }
+  if(b){b.classList.remove('spinning');b.disabled=false;}
+}
+async function doCreateUser(){
+  const username=document.getElementById('nu-name').value.trim();
+  const password=document.getElementById('nu-pw').value;
+  const role=document.getElementById('nu-role').value;
+  if(!username){sb('nu-status','Enter a username','err');return;}
+  if(password.length<8){sb('nu-status','Password must be at least 8 characters','err');return;}
+  sb('nu-status','Creating…','info');
+  const r=await api('/api/users','POST',{username,password,role});
+  if(r.ok){
+    sb('nu-status',`Account "${username}" created`,'ok');
+    document.getElementById('nu-name').value='';
+    document.getElementById('nu-pw').value='';
+    loadUsers();
+  } else sb('nu-status',r.error||'Could not create the account','err');
+}
+async function doSetRole(username,role,sel){
+  sel.disabled=true;
+  const r=await api(`/api/users/${username}/role`,'POST',{role});
+  sel.disabled=false;
+  if(r.ok) sb('users-status',r.message||'Role updated','ok');
+  else{ sb('users-status',r.error||'Could not change the role','err'); loadUsers(); }
+}
+async function doDeleteUser(username){
+  if(!confirm(`Delete the account "${username}"? This cannot be undone.`))return;
+  const r=await api(`/api/users/${username}`,'DELETE');
+  sb('users-status',r.ok?(r.message||'Account deleted'):(r.error||'Could not delete'),r.ok?'ok':'err');
+  loadUsers();
+}
+function openPwReset(username){
+  document.getElementById('pwreset-user').textContent=username;
+  document.getElementById('pwreset-user').dataset.u=username;
+  ['pwreset-new','pwreset-cfm'].forEach(id=>document.getElementById(id).value='');
+  sb('pwreset-status','','info');
+  document.getElementById('pwreset-modal').classList.add('show');
+  document.getElementById('pwreset-new').focus();
+}
+function closePwReset(){document.getElementById('pwreset-modal').classList.remove('show');}
+async function doResetPassword(){
+  const username=document.getElementById('pwreset-user').dataset.u;
+  const nw=document.getElementById('pwreset-new').value;
+  const cfm=document.getElementById('pwreset-cfm').value;
+  if(nw!==cfm){sb('pwreset-status','Passwords do not match','err');return;}
+  if(nw.length<8){sb('pwreset-status','Password must be at least 8 characters','err');return;}
+  sb('pwreset-status','Saving…','info');
+  const r=await api(`/api/users/${username}/password`,'POST',{new:nw});
+  if(r.ok){
+    sb('pwreset-status','Password updated','ok');
+    sb('users-status',`Password reset for "${username}"`,'ok');
+    setTimeout(closePwReset,1200);
+  } else sb('pwreset-status',r.error||'Could not set the password','err');
+}
+
+// Topbar / page refresh — spins the icon instead of replacing button text.
+async function doRefresh(btn){
+  btn.classList.add('spinning'); btn.disabled=true;
+  try{ await loadAll(); }
+  finally{ btn.classList.remove('spinning'); btn.disabled=false; }
+}
+
+loadRole();
 loadAll();
 loadConfig();
 setInterval(loadAll,20000);
 </script>
-
-<div class="br-drawer-overlay" id="br-drawer-overlay" onclick="closeBrDrawer()"></div>
-<div class="br-drawer" id="br-drawer">
-  <div class="br-drawer-hdr" id="br-drawer-hdr"></div>
-  <div class="br-drawer-body" id="br-drawer-body"></div>
-</div>
 </body>
 </html>

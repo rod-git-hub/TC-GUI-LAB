@@ -1,14 +1,57 @@
 [Unit]
 Description=TC Lab WAN Emulator
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/tc_lab
+# State dir defaults to WorkingDirectory. Override to move state onto its own
+# mount (must be writable):
+# Environment=TC_LAB_STATE_DIR=/var/lib/tc_lab
 ExecStartPre=/bin/bash /opt/tc_lab/restore_network.sh
 ExecStart=/opt/tc_lab/venv/bin/python /opt/tc_lab/app.py
 Restart=on-failure
 RestartSec=5
+
+# ── Hardening (kept compatible with a root app that needs tc/ip) ─────────────
+# Assumes the /opt/tc_lab install path. For an install elsewhere, change
+# ReadWritePaths (and drop ProtectHome if it lives under /home).
+#
+# Capability confinement. Without this line the service holds all 40 of root's
+# capabilities; it uses two. Everything else — CAP_SYS_ADMIN, CAP_SYS_PTRACE,
+# CAP_DAC_OVERRIDE, CAP_SETUID, CAP_SYS_BOOT and the rest — is pure blast radius
+# for a Flask app that shells out to iproute2.
+#
+#   CAP_NET_ADMIN   ip link / tc qdisc / bridge, and writing net.* sysctls
+#   CAP_NET_RAW     required alongside NET_ADMIN for netem
+#
+# CAP_SYS_MODULE is deliberately NOT granted. Holding it means being able to
+# load a kernel module — arbitrary code in the kernel — which would undo the
+# rest of this. It is not needed: when `ip link add ... type vlan` or
+# `tc qdisc add ... htb` asks for a module that is not loaded, the KERNEL loads
+# it (rtnl-link-* / sch_* aliases), independently of the caller's capabilities.
+# The app's own `modprobe 8021q` calls then simply fail harmlessly; nothing
+# depends on their result.
+#
+# Note the dependency on root-owned files: dropping CAP_DAC_OVERRIDE means the
+# app can only write files it actually owns, which is why setup.sh chowns the
+# install to root (see its step 6). Do not weaken one without the other.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/opt/tc_lab
+PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+# NOT set: ProtectKernelTunables (needs to write net.ipv4.ip_forward)
+#          ProtectKernelModules  (kernel autoload has been validated without it
+#                                 only; enable after testing, not before)
 
 [Install]
 WantedBy=multi-user.target

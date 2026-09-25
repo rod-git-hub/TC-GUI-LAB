@@ -1,15 +1,21 @@
-"""app.py v9.1"""
+"""app.py v9.2"""
 import os, json, logging, subprocess
+from datetime import timedelta
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, abort
 from flask_login import login_required, current_user
+from flask_wtf import CSRFProtect
 from werkzeug.exceptions import HTTPException
-from auth           import auth_bp, login_manager, get_or_create_secret, ensure_default_user, admin_required
+from auth           import (auth_bp, login_manager, limiter, get_or_create_secret,
+                            ensure_default_user, admin_required, role_required,
+                            list_users, create_user, delete_user, set_password,
+                            set_role, VALID_ROLES)
 from tc_manager     import (apply_netem, remove_qdisc, get_qdisc_stats,
                              list_interfaces, detect_all_tc_configs, split_config_for_members)
 from bridge_manager import (create_bridge, delete_bridge, add_member, remove_member,
                              set_bridge_up, get_bridge_stats, get_all_bridges,
-                             get_all_link_info, list_unbridged_interfaces)
+                             get_all_link_info, list_unbridged_interfaces,
+                             is_foreign_bridge)
 from vlan_manager   import (list_vlan_interfaces, list_physical_interfaces,
                              create_vlan, delete_vlan, set_iface_up, get_iface_stats)
 
@@ -18,26 +24,62 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = get_or_create_secret()
+app.config.update(
+    SESSION_COOKIE_SECURE=True,        # HTTPS-only app — never send cookies over http
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Strict",
+    REMEMBER_COOKIE_SECURE=True,
+    REMEMBER_COOKIE_HTTPONLY=True,
+    REMEMBER_COOKIE_SAMESITE="Strict",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+    MAX_CONTENT_LENGTH=512 * 1024,     # reject oversized request bodies
+)
 login_manager.init_app(app)
+limiter.init_app(app)
+csrf = CSRFProtect(app)               # protects every POST/PUT/PATCH/DELETE
 app.register_blueprint(auth_bp)
 
-PROFILES_DIR   = Path("profiles")
-STATE_FILE     = Path("state.json")
-LABELS_FILE    = Path("labels.json")
-CONFIG_FILE    = Path("config.json")
-NET_CONFIG_FILE = Path("network_config.json")   # ← persistence for bridges + VLANs
-PROFILES_DIR.mkdir(exist_ok=True)
+# ── Security headers (one place, every response) ───────────────────────────────
+@app.after_request
+def _security_headers(resp):
+    resp.headers["X-Frame-Options"]        = "DENY"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"]        = "same-origin"
+    resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    resp.headers["Strict-Transport-Security"]  = "max-age=31536000"
+    resp.headers.setdefault("Cache-Control", "no-store")
+    resp.headers.setdefault("Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+        "base-uri 'none'; frame-ancestors 'none'")
+    return resp
+
+# All writable state lives under STATE_DIR (default: cwd, i.e. /opt/tc_lab under
+# systemd). Set TC_LAB_STATE_DIR to move it elsewhere, e.g. onto its own mount.
+STATE_DIR      = Path(os.environ.get("TC_LAB_STATE_DIR", "."))
+PROFILES_DIR   = STATE_DIR / "profiles"
+STATE_FILE     = STATE_DIR / "state.json"
+LABELS_FILE    = STATE_DIR / "labels.json"
+CONFIG_FILE    = STATE_DIR / "config.json"
+NET_CONFIG_FILE = STATE_DIR / "network_config.json"   # ← persistence for bridges + VLANs
+PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 
 VALID          = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
-DEFAULT_CONFIG = {"idle_timeout_minutes": 30}
+DEFAULT_CONFIG = {"idle_timeout_minutes": 30, "bind_address": "0.0.0.0", "port": 5000}
 
 # ── Error handler ──────────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exception(e):
     if isinstance(e, HTTPException):
         return jsonify({"ok": False, "stderr": e.description}), e.code
-    logger.exception("Unhandled server error: %s", e)
-    return jsonify({"ok": False, "stderr": str(e)}), 500
+    logger.exception("Unhandled server error: %s", e)          # detail → log only
+    return jsonify({"ok": False, "stderr": "Internal server error"}), 500
+
+@app.errorhandler(429)
+def handle_ratelimit(e):
+    if request.path == "/login":
+        return render_template("login.html", rate_limited=True), 429
+    return jsonify({"ok": False, "stderr": f"Too many requests — {e.description}"}), 429
 
 @app.route("/favicon.ico")
 def favicon():
@@ -62,10 +104,13 @@ def save_net_config():
     try:
         bridges = get_all_bridges()
         vlans   = list_vlan_interfaces()
+        skipped = [br for br in bridges if is_foreign_bridge(br)]
+        if skipped:
+            logger.info("Not persisting foreign bridge(s): %s", ", ".join(skipped))
         data = {
             "bridges": {
                 br: {"members": info.get("members", []), "stp": False}
-                for br, info in bridges.items()
+                for br, info in bridges.items() if not is_foreign_bridge(br)
             },
             "vlans": [
                 {"name": v["name"], "parent": v["parent"], "vlan_id": v["vlan_id"]}
@@ -83,20 +128,21 @@ def restore_via_script():
     """Run restore_network.sh to re-create VLANs/bridges/members before tc restore."""
     # Always use absolute path — works from any CWD (systemd ExecStartPre, app startup, import)
     install_dir = Path(__file__).parent.resolve()
+    state_dir   = STATE_DIR.resolve()
     script = install_dir / "restore_network.sh"
-    conf   = install_dir / "network_config.json"
     if not script.exists():
         logger.warning("restore_network.sh not found at %s", script)
         return
-    if not conf.exists():
+    if not NET_CONFIG_FILE.exists():
         logger.info("No network_config.json — nothing to restore")
         return
-    logger.info("Running restore_network.sh from %s ...", install_dir)
+    logger.info("Running restore_network.sh (state=%s) ...", state_dir)
     try:
         r = subprocess.run(
             ["bash", str(script)],
             capture_output=True, text=True, timeout=60,
-            cwd=str(install_dir)
+            cwd=str(install_dir),
+            env={**os.environ, "TC_LAB_STATE_DIR": str(state_dir)},
         )
         for line in r.stdout.splitlines():
             logger.info("  restore: %s", line)
@@ -138,6 +184,14 @@ def _init():
     ensure_default_user()
     _labels = _load_json(LABELS_FILE)
     _config = {**DEFAULT_CONFIG, **_load_json(CONFIG_FILE)}
+    # Safe mode: come up without recreating topology or re-applying/adopting any
+    # tc rules already on the host. Use when running a second instance (test,
+    # staging) on a box whose interfaces are managed by another process.
+    if os.environ.get("TC_LAB_SKIP_RESTORE"):
+        _state = _load_json(STATE_FILE)
+        logger.warning("TC_LAB_SKIP_RESTORE set — skipping topology restore, "
+                       "tc re-apply and live-scan")
+        return
     # 1. Restore VLANs + bridges + members via shell script (reliable ordering)
     restore_via_script()
     # 2. Load saved tc state
@@ -151,8 +205,17 @@ def _init():
     _save_json(STATE_FILE, _state)
     if live: logger.info("Live tc detected on: %s", list(live.keys()))
 
+def _name_ok(s, maxlen=20):
+    """Predicate form of vname() — safe to call on untrusted dict keys/values.
+    First char must be alphanumeric so a name can never be read as a `-flag`
+    by ip/tc (argument injection)."""
+    s = str(s)
+    if not s or len(s) > maxlen or s[0] in ".-":
+        return False
+    return all(c in VALID for c in s.lower())
+
 def vname(s, maxlen=20):
-    if not s or len(s) > maxlen or not all(c in VALID for c in s.lower()):
+    if not _name_ok(s, maxlen):
         abort(400, f"Invalid name: {s!r}")
     return s
 
@@ -167,6 +230,97 @@ def vconfig(data):
 def vlan_id_ok(v):
     try:    return 1 <= int(v) <= 4094
     except: return False
+
+def _show(v, maxlen=40):
+    """Quote a rejected value for an error message, truncated. The name that
+    failed validation is echoed back so the admin can find it in their bundle,
+    but it is attacker-supplied and unbounded in length -- cap it."""
+    s = repr(v)
+    return s if len(s) <= maxlen else s[:maxlen] + "...'"
+
+def _sanitize_bundle(bundle):
+    """Validate an imported config bundle before any of it is written to disk or
+    replayed through `ip`/`tc`. Returns a cleaned copy; raises ValueError on any
+    violation so the whole bundle is rejected (see api_import)."""
+    if not isinstance(bundle, dict):
+        raise ValueError("bundle must be a JSON object")
+    clean = {}
+
+    if "version" in bundle:
+        clean["version"] = str(bundle["version"])[:20]
+
+    if "profiles" in bundle:
+        profs = bundle["profiles"]
+        if not isinstance(profs, dict):
+            raise ValueError("profiles must be an object")
+        out = {}
+        for name, cfg in profs.items():
+            if not _name_ok(name):
+                raise ValueError(f"invalid profile name: {_show(name)}")
+            if not isinstance(cfg, dict):
+                raise ValueError(f"invalid profile config for {_show(name)}")
+            out[name] = vconfig(cfg)
+        clean["profiles"] = out
+
+    if "labels" in bundle:
+        labels = bundle["labels"]
+        if not isinstance(labels, dict):
+            raise ValueError("labels must be an object")
+        out = {}
+        for iface, text in labels.items():
+            if not _name_ok(iface):
+                raise ValueError(f"invalid label interface: {_show(iface)}")
+            out[iface] = str(text)[:80]
+        clean["labels"] = out
+
+    if "tc_state" in bundle:
+        st = bundle["tc_state"]
+        if not isinstance(st, dict):
+            raise ValueError("tc_state must be an object")
+        out = {}
+        for iface, cfg in st.items():
+            if not _name_ok(iface):
+                raise ValueError(f"invalid tc_state interface: {_show(iface)}")
+            if not isinstance(cfg, dict):
+                raise ValueError(f"invalid tc_state config for {_show(iface)}")
+            out[iface] = vconfig(cfg)
+        clean["tc_state"] = out
+
+    if bundle.get("network"):
+        net = bundle["network"]
+        if not isinstance(net, dict):
+            raise ValueError("network must be an object")
+        cn = {"bridges": {}, "vlans": []}
+        for br, info in (net.get("bridges") or {}).items():
+            if not _name_ok(br):
+                raise ValueError(f"invalid bridge name: {_show(br)}")
+            if not isinstance(info, dict):
+                raise ValueError(f"invalid bridge info for {_show(br)}")
+            members = info.get("members") or []
+            if not isinstance(members, list):
+                raise ValueError(f"invalid members list for {_show(br)}")
+            for m in members:
+                if not _name_ok(m):
+                    raise ValueError(f"invalid bridge member: {_show(m)}")
+            cn["bridges"][br] = {"members": list(members),
+                                 "stp": bool(info.get("stp", False))}
+        vlans = net.get("vlans") or []
+        if not isinstance(vlans, list):
+            raise ValueError("network.vlans must be a list")
+        for v in vlans:
+            if not isinstance(v, dict):
+                raise ValueError("invalid vlan entry")
+            nm, pa, vid = v.get("name", ""), v.get("parent", ""), v.get("vlan_id")
+            if not _name_ok(nm):
+                raise ValueError(f"invalid vlan name: {_show(nm)}")
+            if not _name_ok(pa):
+                raise ValueError(f"invalid vlan parent: {_show(pa)}")
+            if not vlan_id_ok(vid):
+                raise ValueError(f"invalid vlan id: {_show(vid)}")
+            cn["vlans"].append({"name": nm, "parent": pa, "vlan_id": int(vid)})
+        clean["network"] = cn
+
+    return clean
 
 # ── UI ─────────────────────────────────────────────────────────────────────────
 @app.route("/")
@@ -199,7 +353,7 @@ def api_stats(iface): return jsonify(get_qdisc_stats(vname(iface)))
 @app.route("/api/apply/<iface>", methods=["POST"])
 @login_required
 def api_apply(iface):
-    iface = vname(iface); config = vconfig(request.get_json(force=True) or {})
+    iface = vname(iface); config = vconfig(request.get_json(silent=True) or {})
     bridges = get_all_bridges()
     if iface in bridges:
         members = bridges[iface].get("members", [])
@@ -238,7 +392,7 @@ def api_reset(iface):
 @app.route("/api/labels/<iface>", methods=["POST"])
 @login_required
 def api_set_label(iface):
-    iface = vname(iface); data = request.get_json(force=True) or {}
+    iface = vname(iface); data = request.get_json(silent=True) or {}
     label = str(data.get("label", ""))[:80]
     if label: _labels[iface] = label
     else:     _labels.pop(iface, None)
@@ -254,7 +408,7 @@ def api_get_config(): return jsonify(_config)
 @admin_required
 def api_set_config():
     global _config
-    data = request.get_json(force=True) or {}
+    data = request.get_json(silent=True) or {}
     if "idle_timeout_minutes" in data:
         try:
             v = int(data["idle_timeout_minutes"])
@@ -264,6 +418,60 @@ def api_set_config():
     _save_json(CONFIG_FILE, _config)
     return jsonify({"ok": True, "config": _config})
 
+# ── User management (admin only) ───────────────────────────────────────────────
+# Every route here is @admin_required, so a "user" role gets 403 regardless of
+# what the browser sends. Responses never include password hashes.
+
+@app.route("/api/users")
+@login_required
+@admin_required
+def api_list_users():
+    return jsonify({"ok": True, "users": list_users(), "roles": list(VALID_ROLES),
+                    "self": current_user.id})
+
+@app.route("/api/users", methods=["POST"])
+@login_required
+@admin_required
+def api_create_user():
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username", "")).strip()
+    if not _name_ok(username):
+        return jsonify({"ok": False, "error":
+            "Username must be 1-20 chars of a-z 0-9 . _ - and start with a letter or digit"}), 400
+    ok, msg = create_user(username, data.get("password", ""),
+                          data.get("role", "user"))
+    return jsonify({"ok": ok, "error": None if ok else msg,
+                    "message": msg if ok else None}), 200 if ok else 400
+
+@app.route("/api/users/<username>", methods=["DELETE"])
+@login_required
+@admin_required
+def api_delete_user(username):
+    ok, msg = delete_user(vname(username), acting_user=current_user.id)
+    return jsonify({"ok": ok, "error": None if ok else msg,
+                    "message": msg if ok else None}), 200 if ok else 400
+
+@app.route("/api/users/<username>/password", methods=["POST"])
+@login_required
+@admin_required
+def api_reset_password(username):
+    """Admin reset — does not require the target's current password. Admins can
+    only set a new one; no route ever reveals an existing password or hash."""
+    data = request.get_json(silent=True) or {}
+    ok, msg = set_password(vname(username), data.get("new", ""))
+    return jsonify({"ok": ok, "error": None if ok else msg,
+                    "message": msg if ok else None}), 200 if ok else 400
+
+@app.route("/api/users/<username>/role", methods=["POST"])
+@login_required
+@admin_required
+def api_set_role(username):
+    data = request.get_json(silent=True) or {}
+    ok, msg = set_role(vname(username), data.get("role", ""),
+                       acting_user=current_user.id)
+    return jsonify({"ok": ok, "error": None if ok else msg,
+                    "message": msg if ok else None}), 200 if ok else 400
+
 # ── Bridges ────────────────────────────────────────────────────────────────────
 @app.route("/api/bridges")
 @login_required
@@ -271,14 +479,16 @@ def api_bridges(): return jsonify(get_all_bridges())
 
 @app.route("/api/bridges/<name>", methods=["POST"])
 @login_required
+@admin_required
 def api_create_bridge(name):
-    data = request.get_json(force=True) or {}
+    data = request.get_json(silent=True) or {}
     r = create_bridge(vname(name), bool(data.get("stp", False)))
     if r["ok"]: save_net_config()          # ← persist
     return jsonify(r)
 
 @app.route("/api/bridges/<name>", methods=["DELETE"])
 @login_required
+@admin_required
 def api_delete_bridge(name):
     r = delete_bridge(vname(name))
     if r["ok"]: save_net_config()          # ← persist
@@ -286,20 +496,23 @@ def api_delete_bridge(name):
 
 @app.route("/api/bridges/<name>/up", methods=["POST"])
 @login_required
+@admin_required
 def api_bridge_updown(name):
-    data = request.get_json(force=True) or {}
+    data = request.get_json(silent=True) or {}
     return jsonify(set_bridge_up(vname(name), up=bool(data.get("up", True))))
 
 @app.route("/api/bridges/<name>/members", methods=["POST"])
 @login_required
+@admin_required
 def api_add_member(name):
-    data = request.get_json(force=True) or {}
+    data = request.get_json(silent=True) or {}
     r = add_member(vname(name), vname(data.get("iface", "")))
     if r["ok"]: save_net_config()          # ← persist
     return jsonify(r)
 
 @app.route("/api/bridges/<name>/members/<iface>", methods=["DELETE"])
 @login_required
+@admin_required
 def api_remove_member(name, iface):
     vname(name)
     r = remove_member(vname(iface))
@@ -320,23 +533,23 @@ def api_vlans():
 
 @app.route("/api/vlans", methods=["POST"])
 @login_required
+@admin_required
 def api_create_vlan():
-    data    = request.get_json(force=True) or {}
+    data    = request.get_json(silent=True) or {}
     parent  = vname(data.get("parent", ""))
     vid_raw = data.get("vlan_id", 0)
     if not vlan_id_ok(vid_raw):
         return jsonify({"ok": False, "stderr": "VLAN ID must be 1-4094"}), 400
     name = data.get("name", "").strip()
-    if name:
-        safe = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
-        if not all(c in safe for c in name.lower()) or len(name) > 20:
-            return jsonify({"ok": False, "stderr": "Invalid name"}), 400
+    if name and not _name_ok(name):
+        return jsonify({"ok": False, "stderr": "Invalid name"}), 400
     r = create_vlan(parent, int(vid_raw), name or None)
     if r["ok"]: save_net_config()          # ← persist
     return jsonify(r)
 
 @app.route("/api/vlans/<name>", methods=["DELETE"])
 @login_required
+@admin_required
 def api_delete_vlan(name):
     r = delete_vlan(vname(name))
     if r["ok"]: save_net_config()          # ← persist
@@ -344,8 +557,9 @@ def api_delete_vlan(name):
 
 @app.route("/api/vlans/<name>/up", methods=["POST"])
 @login_required
+@admin_required
 def api_vlan_up(name):
-    data = request.get_json(force=True) or {}
+    data = request.get_json(silent=True) or {}
     return jsonify(set_iface_up(vname(name), up=bool(data.get("up", True))))
 
 @app.route("/api/vlans/<name>/stats")
@@ -354,8 +568,9 @@ def api_vlan_stats(name): return jsonify(get_iface_stats(vname(name)))
 
 @app.route("/api/iface/<name>/up", methods=["POST"])
 @login_required
+@admin_required
 def api_iface_up(name):
-    data = request.get_json(force=True) or {}
+    data = request.get_json(silent=True) or {}
     return jsonify(set_iface_up(vname(name), up=bool(data.get("up", True))))
 
 # ── Profiles ───────────────────────────────────────────────────────────────────
@@ -373,7 +588,7 @@ def api_get_profile(name):
 @app.route("/api/profiles/<name>", methods=["POST"])
 @login_required
 def api_save_profile(name):
-    config = vconfig(request.get_json(force=True) or {})
+    config = vconfig(request.get_json(silent=True) or {})
     (PROFILES_DIR / f"{vname(name)}.json").write_text(json.dumps(config, indent=2))
     return jsonify({"ok": True})
 
@@ -396,7 +611,7 @@ def api_export():
         try: profiles[f.stem] = json.loads(f.read_text())
         except: pass
     bundle = {
-        "version":  "9.1",
+        "version":  "9.2",
         "exported": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "network":  _load_json(NET_CONFIG_FILE),
         "tc_state": _load_json(STATE_FILE),
@@ -418,9 +633,15 @@ def api_import():
     """Restore a previously exported config bundle."""
     global _state, _labels
     try:
-        bundle = request.get_json(force=True) or {}
+        bundle = request.get_json(silent=True) or {}
     except Exception as e:
         return jsonify({"ok": False, "stderr": f"Invalid JSON: {e}"}), 400
+
+    try:
+        bundle = _sanitize_bundle(bundle)
+    except ValueError as e:
+        logger.warning("Rejected import bundle: %s", e)
+        return jsonify({"ok": False, "stderr": f"Rejected bundle: {e}"}), 400
 
     ver = bundle.get("version", "?")
     imported = []
@@ -465,7 +686,11 @@ if __name__ == "__main__":
         print("[WARNING] Not root -- tc/bridge/vlan/cert commands require root.")
     from ssl_gen import ensure_cert
     cert, key = ensure_cert()
-    print("[TLS] HTTPS on https://0.0.0.0:5000")
+    bind = _config.get("bind_address", "0.0.0.0")
+    try:    port = int(_config.get("port", 5000))
+    except (TypeError, ValueError): port = 5000
+    print(f"[TLS] HTTPS on https://{bind}:{port}")
     print("[TLS] To skip Chrome warning: chrome://settings/certificates")
     print("      Authorities -> Import cert.pem -> Trust for HTTPS")
-    app.run(host="0.0.0.0", port=5000, ssl_context=(cert, key), debug=False)
+    app.run(host=bind, port=port, ssl_context=(cert, key),
+            debug=False, threaded=True)
