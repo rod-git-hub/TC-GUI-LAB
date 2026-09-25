@@ -1,8 +1,9 @@
-# Upgrading to v9.2
+# Upgrading TC Lab
 
-For an existing v9.x install. It takes a couple of minutes, almost all of it
-package and Python dependency checks while the old version keeps running. The
-service restarts once, at the end; the web UI is unavailable for a few seconds.
+For an existing v9.x install, to the latest release (**v9.2.1**). It takes a couple
+of minutes, almost all of it package and Python dependency checks while the old
+version keeps running. The service restarts once, at the end; the web UI is
+unavailable for a few seconds.
 
 > **Your impairments keep running during the upgrade.** Bridges, VLANs and `tc`
 > rules live in the kernel, not in the app — restarting the service does not
@@ -10,7 +11,14 @@ service restarts once, at the end; the web UI is unavailable for a few seconds.
 
 ---
 
-## What changes
+## Coming from v9.2?
+
+Upgrade to v9.2.1 the same way ([step 2](#2-upgrade)). It is a small hardening
+release — stricter name checks and a quieter error message — with no configuration
+or data changes, so everything below about what changes does not apply to you.
+The [release notes](../RELEASE_NOTES.md) list the details.
+
+## What changes from v9.1
 
 v9.2 is a security, UI and account-management release. The impairment engine and
 the workflow are unchanged.
@@ -189,8 +197,8 @@ sudo bash setup.sh --rollback tc_lab-YYYYMMDD-HHMMSS.tgz
 
 The restore is staged and checked before anything is overwritten, so a damaged
 snapshot changes nothing. Your virtualenv is kept, and the systemd unit from the
-snapshot is reinstalled — rolling back to v9.1 gives you v9.1's unconfined unit,
-exactly as it was.
+snapshot is reinstalled — rolling back to v9.1 installs the unit file that shipped
+with v9.1, unconfined as before.
 
 If bridges or VLANs were somehow lost, rebuild them from the saved topology:
 

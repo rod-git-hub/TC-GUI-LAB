@@ -26,10 +26,11 @@ _VALID = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
 def _safe(s):
     """Defence in depth: network_config.json is validated by app.py's
     _sanitize_bundle on import, but this script also runs standalone from
-    systemd, so re-check every name before it reaches `ip`. First char must be
-    alphanumeric so a name can't be read as a `-flag`."""
+    systemd, so re-check every name before it reaches `ip`. Same rule as
+    app.py's _name_ok(): ASCII only (str.lower() would map e.g. U+212A KELVIN
+    SIGN onto 'k'), must not start with '-' or '.'."""
     s = str(s)
-    if not s or len(s) > 20 or s[0] in ".-":
+    if not s or not s.isascii() or len(s) > 20 or s[0] in ".-":
         return False
     return all(c in _VALID for c in s.lower())
 

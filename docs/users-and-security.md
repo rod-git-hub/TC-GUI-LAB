@@ -125,8 +125,9 @@ Guard rails, enforced server-side so the UI cannot be bypassed:
 - You cannot remove your own admin role.
 - You cannot delete or demote the **last** admin — the system can never be left
   with no way in.
-- Usernames are validated (1–20 chars of `a-z 0-9 . _ -`, starting with a letter
-  or digit), so a name can never be read as a path or a command flag.
+- Usernames follow the same rules as every other name: 1–20 plain-ASCII
+  characters — letters, digits, `.`, `_` and `-` — not starting with `-` or `.`.
+  A name can therefore never be read as a path or a command flag.
 
 Role changes take effect on the user's very next request — no restart needed.
 
@@ -226,13 +227,17 @@ cannot be pointed at someone else's account) but only an `admin` can reset
 | Mechanism | Flask-Login, signed cookie |
 | Signing key | `secret_key.txt` — 32 random bytes, `chmod 600`, generated on first run |
 | Cookie flags | `Secure`, `HttpOnly`, `SameSite=Strict` |
-| Lifetime | 12 hours |
+| Session lifetime | 12 hours |
 | Idle timeout | configurable, default 30 min, with a 60-second warning |
-| "Keep me signed in" | extends the session via a `remember` cookie (same flags) |
+| "Keep me signed in" | a `remember` cookie (same flags) that keeps you signed in on that browser for **7 days**. Don't tick it on a shared computer. (Before v9.2.1 it lasted 365 days.) |
 
 `HttpOnly` blocks JavaScript from reading the cookie; `Secure` stops it ever being
 sent over plain HTTP; `SameSite=Strict` means another site cannot cause your
-browser to send it. If `secret_key.txt` is deleted, all sessions are invalidated
+browser to send it.
+
+The 7-day "Keep me signed in" limit is the cookie's expiry date, enforced by the
+browser. The cookie's value is only signed, not timed, so a copy taken from a
+browser keeps working until the signing key changes. If `secret_key.txt` is deleted, all sessions are invalidated
 (everyone must sign in again) — a quick way to force a global sign-out.
 
 ---

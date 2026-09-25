@@ -1,3 +1,57 @@
+## [v9.2.1] - 2026-09-25
+
+A small hardening release from a post-release review of v9.2. No data or
+configuration changes. One deliberate behaviour change: "Keep me signed in" now
+lasts 7 days.
+
+### Security
+- **Name validation rejects non-ASCII characters.** `_name_ok()` (and its copy in
+  `restore_helper.py`) checked the charset against `s.lower()`, and `str.lower()`
+  maps some non-ASCII characters onto ASCII letters — U+212A KELVIN SIGN becomes
+  `k`. Such a name passed validation while the original, non-ASCII name was the one
+  used, allowing look-alike interface, bridge or profile names. It could not be used
+  for path traversal (no `/`) or option injection (no leading `-`). Uppercase ASCII
+  remains accepted. A test now keeps the two validators in agreement.
+- **Config import no longer echoes an exception's text** when the request body
+  cannot be read; it returns `Invalid JSON` and logs the detail server-side.
+- **"Keep me signed in" now lasts 7 days**, not 365. TC Lab never set its own limit,
+  so Flask-Login's default of a year applied; the 12-hour figure in the v9.2 docs
+  only ever described sessions without the box ticked. A test reads the real
+  `Set-Cookie` header. The limit is the cookie's expiry date, which the browser
+  enforces: cookies issued before the upgrade keep their original expiry, and the
+  cookie value itself has no server-side expiry. To end every existing sign-in,
+  delete `secret_key.txt` and restart — this signs everyone out.
+
+### Added — documentation
+- **`docs/user-guide.md`** — the whole dashboard, page by page, with screenshots:
+  impairments and the bridge split, VLANs, bridges, profiles, export/import, users,
+  settings, and a table of what each role can do.
+- **`CONTRIBUTING.md`** — setup, tests (never as root), UI preview and screenshots,
+  how the code is laid out, the release checklist, and the rule that nothing
+  site-specific is ever committed.
+- `docs/README.md`, an index of the documentation.
+- Screenshots: eleven views (up from six), adding Profiles, Settings, Member
+  controls, live statistics, and the Bridge Manager as a non-admin `user` sees it.
+  `capture-screenshots.py` can now render any shot as either role.
+
+### Fixed — documentation
+- The included-profiles table left out values in every row — `good_link` is not a
+  zero baseline (5 ms, 1 ms jitter), and most profiles also cap the rate. Rebuilt
+  from the profile files.
+- `SECURITY.md` asked for vulnerabilities to be reported in a public issue. It now
+  points to GitHub's private vulnerability reporting.
+- Name rules were described as "starting with a letter or digit"; the actual rule is
+  "not starting with `-` or `.`", and names must be ASCII.
+
+### Changed
+- The config export timestamps use timezone-aware UTC (`datetime.now(timezone.utc)`)
+  instead of `datetime.utcnow()`, which Python 3.12+ deprecates. The file name and
+  the `exported` field are unchanged; a test now pins both formats.
+- **pytest 8.3.5 → 9.1.1** (`requirements-dev.txt`) for CVE-2025-71176 /
+  GHSA-6w46-j5rx-g56g (unsafe temporary-directory handling, fixed in 9.0.3).
+  Test tooling only: `setup.sh` installs `requirements.txt`, so no installed
+  system was ever affected. All tests pass on 9.1.1.
+
 ## [v9.2] - 2026-09-24
 
 A security, confinement, UI and account-management release. The impairment engine
@@ -21,7 +75,8 @@ or Ubuntu** — see *Removed*. Upgrade notes: [docs/upgrading.md](docs/upgrading
   `/\evil.example` would otherwise reach the browser as `//evil.example`.
 - **CSRF protection** (Flask-WTF) on every state-changing request. The dashboard sends
   `X-CSRFToken`; the login form carries a hidden token and a strict Referer check.
-- **Cookies** are `Secure` + `HttpOnly` + `SameSite=Strict`, with a 12-hour lifetime.
+- **Cookies** are `Secure` + `HttpOnly` + `SameSite=Strict`; sessions last 12 hours
+  (see v9.2.1 for the "Keep me signed in" limit).
   Request bodies are capped at 512 KB.
 - **Security headers** on every response: `X-Frame-Options: DENY`, `nosniff`,
   `Referrer-Policy`, HSTS and a Content-Security-Policy.

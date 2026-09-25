@@ -340,7 +340,7 @@ sudo bash setup.sh --rollback
 
 A rollback restores **state as well as code** — changes made after the upgrade
 are undone. See [upgrading.md](upgrading.md#rolling-back) for the details, and
-for the full v9.1 → v9.2 walk-through.
+for the full walk-through from any v9.x release.
 
 ---
 
