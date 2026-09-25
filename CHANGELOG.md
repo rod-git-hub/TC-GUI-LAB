@@ -14,6 +14,12 @@ changes for valid input; no data or configuration changes.
 - **Config import no longer echoes an exception's text** when the request body
   cannot be read; it returns `Invalid JSON` and logs the detail server-side.
 
+### Changed
+- **pytest 8.3.5 → 9.1.1** (`requirements-dev.txt`) for CVE-2025-71176 /
+  GHSA-6w46-j5rx-g56g (unsafe temporary-directory handling, fixed in 9.0.3).
+  Test tooling only: `setup.sh` installs `requirements.txt`, so no installed
+  system was ever affected. All tests pass on 9.1.1.
+
 ## [v9.2] - 2026-09-24
 
 A security, confinement, UI and account-management release. The impairment engine

@@ -281,7 +281,8 @@ def test_cli_version_matches_app(capsys):
     with pytest.raises(SystemExit) as e:
         cli.main(["--version"])
     assert e.value.code == 0
-    first = open(os.path.join(os.path.dirname(cli.__file__), "app.py")).readline()
+    with open(os.path.join(os.path.dirname(cli.__file__), "app.py")) as fh:
+        first = fh.readline()
     assert first.strip().strip('"').split()[-1] in capsys.readouterr().out
 
 

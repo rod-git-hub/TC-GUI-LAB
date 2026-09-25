@@ -14,6 +14,10 @@ A small hardening update to v9.2. Upgrade the same way
 
 Neither issue allowed access to files or commands outside TC Lab.
 
+For developers: the test framework (pytest) was updated to fix a published
+vulnerability in it. It is only used to run the test suite and is never installed
+by `setup.sh`, so installed systems were not affected.
+
 ---
 
 ## v9.2 — 24 September 2026
