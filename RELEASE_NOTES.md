@@ -1,6 +1,22 @@
-# TC Lab v9.2 — Release Notes
+# TC Lab — Release Notes
 
-**Released 24 September 2026**
+## v9.2.1 — 25 September 2026
+
+A small hardening update to v9.2. Upgrade the same way
+(`git pull && sudo bash setup.sh`); nothing else changes.
+
+- **Stricter name validation.** Interface, bridge, VLAN and profile names must now
+  be plain ASCII. Certain Unicode look-alike characters (such as the Kelvin sign,
+  `K`) were previously accepted because the check compared a lower-cased copy.
+  Uppercase letters are still allowed.
+- **Import errors no longer show internal detail.** An unreadable config upload
+  reports *"Invalid JSON"*; the detail goes to the service log.
+
+Neither issue allowed access to files or commands outside TC Lab.
+
+---
+
+## v9.2 — 24 September 2026
 
 v9.2 makes TC Lab safer to run and easier to operate. The impairment engine and
 your day-to-day workflow are unchanged: the same latency, jitter, loss,
@@ -10,7 +26,7 @@ For the complete, itemised list of changes see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## Highlights
+### Highlights
 
 - **Security fixes**, including a flaw that let a crafted config bundle write files
   as root. [Details below](#security-fixes).
@@ -24,7 +40,7 @@ For the complete, itemised list of changes see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## Before you upgrade
+### Before you upgrade
 
 1. **Supported platform: Debian or Ubuntu, with systemd.** The installer uses `apt`
    and stops with a clear message anywhere else.
@@ -39,7 +55,7 @@ For the complete, itemised list of changes see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## Upgrading
+### Upgrading
 
 ```bash
 cd /path/to/TC-GUI-LAB && git pull && sudo bash setup.sh
@@ -58,9 +74,9 @@ The full walk-through, with verification steps, is in
 
 ---
 
-## What's new
+### What's new
 
-### A confined service
+#### A confined service
 
 TC Lab has to run as root, because `tc`, `ip` and `bridge` need it. It no longer
 has to run as *unrestricted* root:
@@ -83,7 +99,7 @@ grep CapEff /proc/$(systemctl show tc_lab -p MainPID --value)/status
 This narrows what a compromised service could do; it is not a hard boundary. The
 process still runs as UID 0, so keep TC Lab on an isolated lab network.
 
-### Users and roles
+#### Users and roles
 
 - An admin-only **Users** section in the dashboard: create accounts, reset
   passwords, change roles, delete accounts.
@@ -98,7 +114,7 @@ process still runs as UID 0, so keep TC Lab on an isolated lab network.
 Existing accounts are all `admin`, so nothing changes until you create `user`
 accounts. See [docs/users-and-security.md](docs/users-and-security.md).
 
-### The `tc-lab` command
+#### The `tc-lab` command
 
 ```bash
 tc-lab --help
@@ -110,7 +126,7 @@ tc-lab --help
 | `sudo tc-lab list-users` | List accounts and roles (`--json` for scripts) |
 | `tc-lab --version` | Show the installed version |
 
-### The interface
+#### The interface
 
 - A top bar and left sidebar replace the row of tabs.
 - Dark and light themes.
@@ -119,7 +135,7 @@ tc-lab --help
 - The top-bar counts no longer double-count bridges: interfaces and bridges now
   add up to the devices on the host.
 
-### Installation and upgrades
+#### Installation and upgrades
 
 - **Safe to re-run.** `setup.sh` keeps your accounts (it asks first), `config.json`,
   TLS certificate, saved impairments, topology, labels and profiles.
@@ -138,7 +154,7 @@ tc-lab --help
 - Configuration, TLS certificates and installer options are documented in
   [docs/deployment.md](docs/deployment.md#4-configuration).
 
-### Fixes
+#### Fixes
 
 - VLANs that were bridge members *and* had names without a dot (such as `wan1`)
   were silently left out of config exports, so they were not restored.
@@ -150,7 +166,7 @@ tc-lab --help
 
 ---
 
-## Security fixes
+### Security fixes
 
 | Issue | What could happen | Fixed by |
 |---|---|---|
@@ -172,7 +188,7 @@ The security model and the limitations that remain are described in
 
 ---
 
-## Not supported: Docker / containers
+### Not supported: Docker / containers
 
 TC Lab installs and runs as a systemd service only. A container build was tried
 during v9.2 development and deliberately not released:
@@ -195,7 +211,7 @@ iproute2, and [docs/deployment.md](docs/deployment.md) describes running it by h
 
 ---
 
-## Compatibility
+### Compatibility
 
 - **Data carries over unchanged.** Accounts, `config.json`, saved impairments,
   topology, labels and profiles from v9.x work as-is.
@@ -207,7 +223,7 @@ iproute2, and [docs/deployment.md](docs/deployment.md) describes running it by h
 
 ---
 
-## Known limitations
+### Known limitations
 
 Unchanged from before, and documented in [SECURITY.md](SECURITY.md):
 
@@ -220,7 +236,7 @@ Unchanged from before, and documented in [SECURITY.md](SECURITY.md):
 
 ---
 
-## How this release was tested
+### How this release was tested
 
 - **128 automated tests**, covering the security fixes, account rules, the CLI,
   VLAN detection and bridge handling.

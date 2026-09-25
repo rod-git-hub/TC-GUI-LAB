@@ -23,12 +23,15 @@ auth = importlib.import_module("auth")
     "", "..", ".", "-", "../x", "../../etc/passwd", "-rf", "--help",
     ".hidden", "a/b", "a b", "a;b", "a$b", "a" * 21, "x\x00y",
     "<script>", "a`b", "a|b",
+    # non-ASCII — str.lower() maps some of these onto ASCII letters
+    "\u212a", "eth\u212a0", "eth0\u200b", "\u00e9th0", "\uff45th0", "br\u0131",
 ])
 def test_name_ok_rejects(bad):
     assert app._name_ok(bad) is False
 
 
-@pytest.mark.parametrize("ok", ["eth0", "br-wan", "eth1.100", "a", "x_1", "A0", "a.b-c_d"])
+@pytest.mark.parametrize("ok", ["eth0", "br-wan", "eth1.100", "a", "x_1", "A0", "a.b-c_d",
+                                "WAN-A1", "Br-Lab1", "_x"])
 def test_name_ok_accepts(ok):
     assert app._name_ok(ok) is True
 
@@ -258,3 +261,38 @@ def test_save_net_config_skips_foreign_bridges(base, monkeypatch):
     saved = json.loads(app.NET_CONFIG_FILE.read_text())
     assert list(saved["bridges"]) == ["br-wan1"]
     assert saved["bridges"]["br-wan1"]["members"] == ["eth1", "eth2"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The boot-time restore re-validates every name with its own copy of the rule.
+# restore_helper.py executes on import, so extract just _VALID and _safe().
+# ─────────────────────────────────────────────────────────────────────────────
+def _restore_helper_safe():
+    import ast, pathlib
+    src = pathlib.Path(_REPO, "restore_helper.py").read_text()
+    keep = [n for n in ast.parse(src).body
+            if (isinstance(n, ast.FunctionDef) and n.name == "_safe")
+            or (isinstance(n, ast.Assign)
+                and any(getattr(t, "id", None) == "_VALID" for t in n.targets))]
+    ns = {}
+    exec(compile(ast.Module(keep, []), "restore_helper.py", "exec"), ns)
+    return ns["_safe"]
+
+
+@pytest.mark.parametrize("name", [
+    "eth0", "eth1.100", "WAN-A1", "Br-Lab1", "_x", "a" * 20, "a" * 21,
+    "", ".x", "-x", "a/b", "a b", "\u212a", "eth\u212a0", "\u00e9th0", "eth0\u200b",
+])
+def test_restore_helper_agrees_with_app_validator(name):
+    assert _restore_helper_safe()(name) == app._name_ok(name)
+
+
+def test_import_unreadable_body_does_not_echo_exception(base, monkeypatch):
+    import flask
+    def boom(*a, **k):
+        raise ValueError("INTERNAL-DETAIL-must-not-leak")
+    monkeypatch.setattr(flask.Request, "get_json", boom)
+    r = _client(as_user="admin").post("/api/import", data="x")
+    assert r.status_code == 400
+    assert b"INTERNAL-DETAIL" not in r.data
+    assert r.get_json()["stderr"] == "Invalid JSON"

@@ -1,3 +1,19 @@
+## [v9.2.1] - 2026-09-25
+
+A small hardening release from a post-release review of v9.2. No behaviour
+changes for valid input; no data or configuration changes.
+
+### Security
+- **Name validation rejects non-ASCII characters.** `_name_ok()` (and its copy in
+  `restore_helper.py`) checked the charset against `s.lower()`, and `str.lower()`
+  maps some non-ASCII characters onto ASCII letters — U+212A KELVIN SIGN becomes
+  `k`. Such a name passed validation while the original, non-ASCII name was the one
+  used, allowing look-alike interface, bridge or profile names. It could not be used
+  for path traversal (no `/`) or option injection (no leading `-`). Uppercase ASCII
+  remains accepted. A test now keeps the two validators in agreement.
+- **Config import no longer echoes an exception's text** when the request body
+  cannot be read; it returns `Invalid JSON` and logs the detail server-side.
+
 ## [v9.2] - 2026-09-24
 
 A security, confinement, UI and account-management release. The impairment engine

@@ -1,4 +1,4 @@
-"""app.py v9.2"""
+"""app.py v9.2.1"""
 import os, json, logging, subprocess
 from datetime import timedelta
 from pathlib import Path
@@ -207,10 +207,15 @@ def _init():
 
 def _name_ok(s, maxlen=20):
     """Predicate form of vname() — safe to call on untrusted dict keys/values.
-    First char must be alphanumeric so a name can never be read as a `-flag`
-    by ip/tc (argument injection)."""
+
+    ASCII letters (either case), digits, '.', '_' and '-' only; at most `maxlen`
+    characters; must not start with '-' (so a name can never be read as a
+    `-flag` by ip/tc) or '.' (so it can never be '..'). isascii() is checked
+    first because str.lower() maps some non-ASCII characters onto ASCII
+    letters — U+212A KELVIN SIGN becomes 'k' — which would otherwise pass the
+    charset check while the original, non-ASCII name is the one used."""
     s = str(s)
-    if not s or len(s) > maxlen or s[0] in ".-":
+    if not s or not s.isascii() or len(s) > maxlen or s[0] in ".-":
         return False
     return all(c in VALID for c in s.lower())
 
@@ -611,7 +616,7 @@ def api_export():
         try: profiles[f.stem] = json.loads(f.read_text())
         except: pass
     bundle = {
-        "version":  "9.2",
+        "version":  "9.2.1",
         "exported": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "network":  _load_json(NET_CONFIG_FILE),
         "tc_state": _load_json(STATE_FILE),
@@ -635,7 +640,8 @@ def api_import():
     try:
         bundle = request.get_json(silent=True) or {}
     except Exception as e:
-        return jsonify({"ok": False, "stderr": f"Invalid JSON: {e}"}), 400
+        logger.warning("Import: unreadable request body: %s", e)   # detail → log only
+        return jsonify({"ok": False, "stderr": "Invalid JSON"}), 400
 
     try:
         bundle = _sanitize_bundle(bundle)
