@@ -296,3 +296,42 @@ def test_import_unreadable_body_does_not_echo_exception(base, monkeypatch):
     assert r.status_code == 400
     assert b"INTERNAL-DETAIL" not in r.data
     assert r.get_json()["stderr"] == "Invalid JSON"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# "Keep me signed in" must not outlive a working week (Flask-Login defaults to 365
+# days). Read the real Set-Cookie header rather than trusting the config value.
+# ─────────────────────────────────────────────────────────────────────────────
+def test_remember_me_cookie_lasts_seven_days(base):
+    from datetime import datetime, timezone, timedelta
+    from email.utils import parsedate_to_datetime
+    c = _client()
+    r = c.post("/login", data={"username": "bob", "password": "pw", "remember": "on"})
+    assert r.status_code == 302
+    cookie = next(h for h in r.headers.getlist("Set-Cookie") if h.startswith("remember_token="))
+    expires = parsedate_to_datetime(cookie.split("Expires=")[1].split(";")[0])
+    left = expires - datetime.now(timezone.utc)
+    assert timedelta(days=6, hours=23) < left <= timedelta(days=7)
+    assert "Secure" in cookie and "HttpOnly" in cookie and "SameSite=Strict" in cookie
+
+
+def test_login_without_remember_sets_no_remember_cookie(base):
+    r = _client().post("/login", data={"username": "bob", "password": "pw"})
+    assert r.status_code == 302
+    assert not any(h.startswith("remember_token=") for h in r.headers.getlist("Set-Cookie"))
+
+
+def test_export_bundle_shape_and_version(base):
+    """The export is what a user keeps as a backup — pin its shape, version and
+    timestamp formats so a refactor cannot silently change them."""
+    import re
+    r = _client(as_user="bob").get("/api/export")          # any signed-in role
+    assert r.status_code == 200
+    assert re.fullmatch(r'attachment; filename=tc_lab_config_\d{8}_\d{6}\.json',
+                        r.headers["Content-Disposition"])
+    b = r.get_json()
+    assert set(b) == {"version", "exported", "network", "tc_state", "labels", "profiles"}
+    with open(os.path.join(_REPO, "app.py")) as fh:
+        app_version = fh.readline().strip().strip('"').split()[-1].lstrip("v")
+    assert b["version"] == app_version
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", b["exported"])

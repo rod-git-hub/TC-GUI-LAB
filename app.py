@@ -31,6 +31,9 @@ app.config.update(
     REMEMBER_COOKIE_SECURE=True,
     REMEMBER_COOKIE_HTTPONLY=True,
     REMEMBER_COOKIE_SAMESITE="Strict",
+    # "Keep me signed in" — Flask-Login's own default is 365 days, far too long for
+    # a tool that runs as root. A working week, then sign in again.
+    REMEMBER_COOKIE_DURATION=timedelta(days=7),
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
     MAX_CONTENT_LENGTH=512 * 1024,     # reject oversized request bodies
 )
@@ -610,21 +613,21 @@ def api_delete_profile(name):
 @login_required
 def api_export():
     """Bundle network config, tc state, labels and profiles into one JSON."""
-    from datetime import datetime
+    from datetime import datetime, timezone
     profiles = {}
     for f in PROFILES_DIR.glob("*.json"):
         try: profiles[f.stem] = json.loads(f.read_text())
         except: pass
     bundle = {
         "version":  "9.2.1",
-        "exported": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "exported": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "network":  _load_json(NET_CONFIG_FILE),
         "tc_state": _load_json(STATE_FILE),
         "labels":   _load_json(LABELS_FILE),
         "profiles": profiles
     }
     from flask import Response
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return Response(
         json.dumps(bundle, indent=2),
         mimetype="application/json",
