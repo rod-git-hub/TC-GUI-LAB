@@ -12,6 +12,8 @@ Pass "user" to check which controls the non-admin role hides.
 """
 import json, os, sys
 
+ROLE = sys.argv[1] if len(sys.argv) > 1 else "admin"
+
 SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "index.html")
 DST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_preview.html")
 
@@ -53,7 +55,7 @@ DATA = {
                       "packet_loss": {"loss_pct": 5, "duplicate_pct": 0.5},
                       "wan_degraded": {"latency_ms": 200, "jitter_ms": 80, "loss_pct": 8}},
     "/api/config": {"idle_timeout_minutes": 30},
-    "/api/auth/whoami": {"username": "admin", "role": sys.argv[1] if len(sys.argv) > 1 else "admin"},
+    "/api/auth/whoami": {"username": "operator" if ROLE == "user" else "admin", "role": ROLE},
     "/api/users": {"ok": True, "self": "admin", "roles": ["admin", "user"],
                    "users": [{"username": "admin", "role": "admin"},
                              {"username": "operator", "role": "user"},

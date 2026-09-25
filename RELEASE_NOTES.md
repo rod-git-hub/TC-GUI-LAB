@@ -3,7 +3,7 @@
 ## v9.2.1 — 25 September 2026
 
 A small hardening update to v9.2. Upgrade the same way
-(`git pull && sudo bash setup.sh`); nothing else changes.
+(`git pull && sudo bash setup.sh`); there are no configuration or data changes.
 
 - **Stricter name validation.** Interface, bridge, VLAN and profile names must now
   be plain ASCII. Certain Unicode look-alike characters (such as the Kelvin sign,
@@ -11,8 +11,16 @@ A small hardening update to v9.2. Upgrade the same way
   Uppercase letters are still allowed.
 - **Import errors no longer show internal detail.** An unreadable config upload
   reports *"Invalid JSON"*; the detail goes to the service log.
+- **"Keep me signed in" now lasts 7 days.** It used to last a year. Browsers that
+  were already remembered before the upgrade keep their old expiry; to sign
+  everyone out now, delete `/opt/tc_lab/secret_key.txt` and restart the service.
 
-Neither issue allowed access to files or commands outside TC Lab.
+None of these allowed access to files or commands outside TC Lab.
+
+**New documentation:** a [user guide](docs/user-guide.md) covering every page of
+the dashboard with screenshots, a [contributor guide](CONTRIBUTING.md), and a
+private way to [report security issues](SECURITY.md#reporting-a-vulnerability). The
+table of included profiles now lists every value each profile sets.
 
 For developers: the test framework (pytest) was updated to fix a published
 vulnerability in it. It is only used to run the test suite and is never installed

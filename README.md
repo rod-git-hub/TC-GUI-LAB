@@ -77,11 +77,13 @@ Open **https://your-server-ip:5000** in your browser.
 | Document | What it covers |
 |---|---|
 | [RELEASE_NOTES.md](RELEASE_NOTES.md) | What is new in this version, and what to know before upgrading |
+| [docs/user-guide.md](docs/user-guide.md) | **Using TC Lab** — every page of the dashboard, with screenshots |
 | [docs/deployment.md](docs/deployment.md) | Installation, **configuration** (`config.json`, TLS, installer options), service control, logs, uninstall |
 | [docs/upgrading.md](docs/upgrading.md) | **Upgrading** from v9.x, verifying, and rolling back |
 | [docs/users-and-security.md](docs/users-and-security.md) | Accounts, roles, password handling, hardening |
 | [SECURITY.md](SECURITY.md) | Security model, fixes, and known limitations |
 | [CHANGELOG.md](CHANGELOG.md) | Detailed change history, every version |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Working on TC Lab: tests, screenshots, release checklist |
 
 On the host, `tc-lab --help` lists the administration commands.
 
@@ -202,20 +204,24 @@ exist, `br_netfilter` is not loaded and there is nothing to do.
 For bridges: applying to the bridge card splits values across all member
 interfaces. Use "Member controls" to fine-tune individual interfaces.
 
+Every page of the dashboard — profiles, export/import, users, settings, roles — is
+described step by step, with screenshots, in the
+**[user guide](docs/user-guide.md)**.
+
 ---
 
 ## 📦 Included Profiles
 
-| Profile | Description |
-|---|---|
-| `good_link` | Clean baseline |
-| `mpls_good` | Low-latency MPLS (10ms, 100mbit) |
-| `broadband` | Typical broadband (20ms, 50mbit, 0.1% loss) |
-| `high_latency_wan` | Slow WAN (150ms, 20ms jitter, 0.5% loss) |
-| `lte_congested` | Congested LTE (80ms, 30ms jitter, 1.5% loss) |
-| `satellite_link` | Satellite (600ms, 50ms jitter, 2% loss) |
-| `packet_loss` | High loss scenario (5% loss, 0.5% dup) |
-| `wan_degraded` | Degraded WAN (200ms, 80ms jitter, 8% loss) |
+| Profile | Simulates | Latency | Jitter | Loss | Duplicate | Corrupt | Rate |
+|---|---|--:|--:|--:|--:|--:|--:|
+| `good_link` | a near-clean baseline | 5 ms | 1 ms | — | — | — | — |
+| `mpls_good` | a good MPLS circuit | 10 ms | 2 ms | — | — | — | 100 mbit |
+| `broadband` | typical broadband | 20 ms | 8 ms | 0.1% | — | — | 50 mbit |
+| `high_latency_wan` | a slow, distant WAN | 150 ms | 20 ms | 0.5% | — | — | 10 mbit |
+| `lte_congested` | congested LTE | 80 ms | 30 ms | 1.5% | 0.2% | — | 2 mbit |
+| `satellite_link` | a satellite link | 600 ms | 50 ms | 2% | — | — | 5 mbit |
+| `packet_loss` | a lossy but otherwise normal link | 30 ms | 5 ms | 5% | 0.5% | 0.1% | — |
+| `wan_degraded` | a badly degraded WAN | 200 ms | 80 ms | 8% | 1% | 0.5% | 1 mbit |
 
 ---
 
@@ -289,14 +295,29 @@ tc-lab/
 ### TC Emulation — impairments per interface or per bridge
 ![TC Emulation](docs/img/02-tc-emulation.png)
 
+### Member controls — fine-tune each side of a bridge
+![Member controls](docs/img/09-member-controls.png)
+
 ### Interfaces & VLANs — physical NICs with their 802.1Q sub-interfaces
 ![Interfaces and VLANs](docs/img/03-interfaces-vlans.png)
 
 ### Bridge Manager — group interfaces into a path
 ![Bridge Manager](docs/img/04-bridge-manager.png)
 
+### Profiles & lab config — presets, export and import
+![Profiles and lab config](docs/img/07-profiles.png)
+
+### Live tc statistics
+![Interface statistics](docs/img/10-interface-stats.png)
+
 ### User Management — admin-only accounts and roles
 ![User Management](docs/img/05-user-management.png)
+
+### The same page for a `user` — structural controls hidden
+![Bridge Manager as a user](docs/img/11-user-role.png)
+
+### Settings — password, idle timeout, theme
+![Settings](docs/img/08-settings.png)
 
 ### Sign in
 ![Sign in](docs/img/01-login.png)
@@ -304,7 +325,7 @@ tc-lab/
 ### Light theme
 ![Light theme](docs/img/06-light-theme.png)
 
-<sub>Screenshots are generated from the UI itself with
+<sub>Screenshots are generated from the UI itself, with demo interfaces, by
 <code>python3 tools/capture-screenshots.py</code> — re-run it after any UI change
 so they never go stale.</sub>
 
@@ -315,7 +336,9 @@ so they never go stale.</sub>
 
 ## 🤝 Contributing
 
-Pull requests welcome. For major changes, open an issue first.
+Pull requests welcome. For major changes, open an issue first. Before you start,
+read **[CONTRIBUTING.md](CONTRIBUTING.md)** — how to run the tests, regenerate the
+screenshots, and what never goes into a commit.
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/my-feature`)
