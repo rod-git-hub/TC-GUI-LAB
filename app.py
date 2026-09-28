@@ -11,7 +11,8 @@ from auth           import (auth_bp, login_manager, limiter, get_or_create_secre
                             list_users, create_user, delete_user, set_password,
                             set_role, VALID_ROLES)
 from tc_manager     import (apply_netem, remove_qdisc, get_qdisc_stats,
-                             list_interfaces, detect_all_tc_configs, split_config_for_members)
+                             list_interfaces, detect_all_tc_configs, split_config_for_members,
+                             combine_member_configs)
 from ports          import DEFAULT_PORT, parse_port, port_available
 from bridge_manager import (create_bridge, delete_bridge, add_member, remove_member,
                              set_bridge_up, get_bridge_stats, get_all_bridges,
@@ -159,6 +160,20 @@ def restore_via_script():
         logger.warning("restore_network.sh error: %s", e)
 
 
+def _bridge_total(bridges, br):
+    """What the bridge card shows: the combined impairment of its members.
+    Members are the only record of what is applied — a bridge has no qdisc of
+    its own and no separate value to go stale."""
+    members = bridges.get(br, {}).get("members", [])
+    return combine_member_configs([_state.get(m, {}) for m in members])
+
+def _drop_bridge_keys(state, bridge_names):
+    """v9.2 also stored a bridge's own value next to its members'. Members are
+    the record now; a leftover bridge entry could only disagree with them."""
+    for br in bridge_names:
+        state.pop(br, None)
+    return state
+
 def _reapply_tc(saved, bridge_names):
     """Re-push saved tc rules to kernel after a reboot."""
     if not saved:
@@ -211,7 +226,7 @@ def _init():
         _reapply_tc(saved, bridge_names)
     # 3. Scan live rules
     live   = detect_all_tc_configs(list_interfaces())
-    _state = {**saved, **live}
+    _state = _drop_bridge_keys({**saved, **live}, get_all_bridges().keys())
     _save_json(STATE_FILE, _state)
     if live: logger.info("Live tc detected on: %s", list(live.keys()))
 
@@ -357,8 +372,9 @@ def api_interfaces():
         meta[n] = {"is_bridge": n in bridges, "is_member": n in member_of,
                    "master": member_of.get(n, ""), "state": "up" if "UP" in f else "down",
                    "mtu": link.get("mtu", "")}
+    totals = {br: _bridge_total(bridges, br) for br in bridges}
     return jsonify({"interfaces": ifaces, "bridges": bridges, "unbridged": unbridged,
-                    "meta": meta, "state": _state, "labels": _labels})
+                    "meta": meta, "state": _state, "labels": _labels, "totals": totals})
 
 # ── TC ─────────────────────────────────────────────────────────────────────────
 @app.route("/api/stats/<iface>")
@@ -380,12 +396,22 @@ def api_apply(iface):
             r = apply_netem(m, mc); results[m] = r
             if r["ok"]: _state[m] = mc
             else:       all_ok = False
-        _state[iface] = config; _save_json(STATE_FILE, _state)
+        _state.pop(iface, None); _save_json(STATE_FILE, _state)
         return jsonify({"ok": all_ok, "is_bridge": True, "members": members,
-                        "results": results, "split_cfg": mc}), 200 if all_ok else 500
+                        "results": results, "split_cfg": mc,
+                        "total": _bridge_total(bridges, iface)}), 200 if all_ok else 500
     result = apply_netem(iface, config)
     if result["ok"]: _state[iface] = config; _save_json(STATE_FILE, _state)
+    result.update(_member_update(bridges, iface))
     return jsonify(result), 200 if result["ok"] else 500
+
+def _member_update(bridges, iface):
+    """For a bridge member: which bridge, and its new total — the page shows it
+    on the bridge card straight away."""
+    for br, info in bridges.items():
+        if iface in info.get("members", []):
+            return {"bridge": br, "total": _bridge_total(bridges, br)}
+    return {}
 
 @app.route("/api/reset/<iface>", methods=["POST"])
 @login_required
@@ -398,9 +424,11 @@ def api_reset(iface):
             if r["ok"]: _state.pop(m, None)
         _state.pop(iface, None); _save_json(STATE_FILE, _state)
         return jsonify({"ok": all(v["ok"] for v in results.values()) if results else True,
-                        "is_bridge": True, "members": results})
+                        "is_bridge": True, "members": results,
+                        "total": _bridge_total(bridges, iface)})
     result = remove_qdisc(iface)
     if result["ok"]: _state.pop(iface, None); _save_json(STATE_FILE, _state)
+    result.update(_member_update(bridges, iface))
     return jsonify(result)
 
 # ── Labels ─────────────────────────────────────────────────────────────────────
@@ -728,7 +756,13 @@ def api_import():
 
     # TC state — save to disk; will be re-applied on next restart
     if "tc_state" in bundle:
-        _state = bundle["tc_state"]
+        bundle_bridges = ((bundle.get("network") or {}).get("bridges") or {}).keys()
+        try:
+            live_bridges = set(get_all_bridges().keys())
+        except Exception as e:                   # e.g. no iproute2 — import must still work
+            logger.warning("Import: cannot list bridges: %s", e)
+            live_bridges = set()
+        _state = _drop_bridge_keys(dict(bundle["tc_state"]), set(bundle_bridges) | live_bridges)
         _save_json(STATE_FILE, _state)
         imported.append("tc_state")
 
