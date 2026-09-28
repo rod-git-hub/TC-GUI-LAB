@@ -10,5 +10,7 @@
 | Read the security model, or report a vulnerability | [../SECURITY.md](../SECURITY.md) |
 | Work on TC Lab itself | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 
+The same documents are inside the dashboard, under **Help**.
+
 Screenshots live in [`img/`](img/) and are generated from the dashboard with demo
 data by `tools/capture-screenshots.py`.

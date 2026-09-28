@@ -27,11 +27,6 @@
 set -euo pipefail
 
 INSTALL_DIR="${TC_LAB_DIR:-/opt/tc_lab}"
-# Everything the service writes: accounts, settings, certificate, saved
-# impairments, topology, profiles. Owned by SVC_USER; the code stays root's.
-STATE_DIR="${TC_LAB_STATE_DIR:-/var/lib/tc_lab}"
-# The unprivileged system user the service runs as. Override for scratch installs.
-SVC_USER="${TC_LAB_USER:-tc-lab}"
 # Service name. Override to install a second instance, or to exercise this
 # script against a scratch unit without touching a live one.
 SERVICE="${TC_LAB_SERVICE:-tc_lab}"
@@ -39,6 +34,17 @@ SERVICE="${TC_LAB_SERVICE:-tc_lab}"
 # install into a scratch directory without touching the real service.
 UNIT_DIR="${TC_LAB_UNIT_DIR:-/etc/systemd/system}"
 BACKUP_DIR="${TC_LAB_BACKUP_DIR:-/var/backups/tc-lab}"
+# The unit already installed, if any. An upgrade keeps its state directory and
+# service user, so a custom TC_LAB_STATE_DIR does not have to be repeated.
+EXISTING_UNIT="${UNIT_DIR}/${SERVICE}.service"
+unit_setting() { [ -f "$EXISTING_UNIT" ] && sed -n "s/^$1=//p" "$EXISTING_UNIT" | head -1; }
+# Everything the service writes: accounts, settings, certificate, saved
+# impairments, topology, profiles. Owned by SVC_USER; the code stays root's.
+STATE_DIR="${TC_LAB_STATE_DIR:-$(unit_setting Environment=TC_LAB_STATE_DIR || true)}"
+STATE_DIR="${STATE_DIR:-/var/lib/tc_lab}"
+# The unprivileged system user the service runs as. Override for scratch installs.
+SVC_USER="${TC_LAB_USER:-$(unit_setting User || true)}"
+SVC_USER="${SVC_USER:-tc-lab}"
 # Where the tc-lab CLI symlink goes. Override for packaging or scratch installs.
 BIN_DIR="${TC_LAB_BIN_DIR:-/usr/local/bin}"
 KEEP_BACKUPS="${TC_LAB_KEEP_BACKUPS:-5}"
@@ -158,7 +164,7 @@ snap_create() {
     local name="tc_lab-$(date +%Y%m%d-%H%M%S).tgz"
     # Record the running version so --list-backups is readable.
     local ver
-    ver=$(head -1 "${INSTALL_DIR}/app.py" 2>/dev/null | tr -cd 'v0-9.' || true)
+    ver=$(head -1 "${INSTALL_DIR}/app.py" 2>/dev/null | grep -oE 'v[0-9]+(\.[0-9]+)*' | head -1 || true)
     local stage; stage=$(mktemp -d)
     rsync -a --exclude=venv --exclude=__pycache__ "${INSTALL_DIR}/" "$stage/"
     if [ -d "${STATE_DIR}" ]; then
@@ -243,12 +249,24 @@ has_legacy_state() {
     return 1
 }
 
+# Before v9.3 the unit had no User= (it ran as root, state in the install dir).
+installed_unit_is_legacy() {
+    [ ! -f "$EXISTING_UNIT" ] || ! grep -q '^User=' "$EXISTING_UNIT"
+}
+
 # Before v9.3 the service ran as root and kept its state inside the install
 # directory. Copy it to STATE_DIR, verify every file, then remove the originals
 # (a snapshot of both was taken first). Runs before the code is copied, so
 # user-created profiles are still there next to the shipped ones.
 migrate_legacy_state() {
     has_legacy_state || return 0
+    if ! installed_unit_is_legacy; then
+        # e.g. app.py run by hand from the install directory: not the
+        # service's state, which is in STATE_DIR. Never let it replace that.
+        echo "[!] ${INSTALL_DIR} holds state files the service does not use (its"
+        echo "    state is in ${STATE_DIR}). Left as they are; delete them when sure."
+        return 0
+    fi
     echo "[*] Moving TC Lab's state from ${INSTALL_DIR} to ${STATE_DIR}"
     if [ -d "${STATE_DIR}" ] && [ -n "$(ls -A "${STATE_DIR}" 2>/dev/null)" ]; then
         # Only after rolling back to a pre-v9.3 snapshot and upgrading again:
@@ -310,7 +328,9 @@ USERS_FILE="${STATE_DIR}/users.json"
 # install directory; if one is there it is the current one (see
 # migrate_legacy_state), otherwise it is in STATE_DIR.
 CUR_USERS="${USERS_FILE}"
-[ -f "${INSTALL_DIR}/users.json" ] && CUR_USERS="${INSTALL_DIR}/users.json"
+if [ -f "${INSTALL_DIR}/users.json" ] && installed_unit_is_legacy; then
+    CUR_USERS="${INSTALL_DIR}/users.json"
+fi
 IS_UPGRADE=0
 [ -f "${INSTALL_DIR}/app.py" ] && IS_UPGRADE=1
 

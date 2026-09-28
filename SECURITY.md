@@ -9,12 +9,12 @@ for internet-facing deployment** and by design manipulates the host's live netwo
 
 | Version | Supported |
 |---|---|
-| v9.2.1 (latest) | ✅ |
-| v9.2            | ✅ — upgrading to v9.2.1 is recommended |
+| v9.3 (latest)   | ✅ |
+| v9.2 – v9.2.1   | ✅ — upgrading to v9.3 is recommended (it stops running as root) |
 | v9.0 – v9.1     | ⚠️ upgrade recommended (before the security hardening) |
 | older           | ❌ |
 
-## What v9.2 and v9.2.1 address
+## What v9.2 – v9.3 address
 
 | Area | Before | Now |
 |---|---|---|
@@ -27,25 +27,26 @@ for internet-facing deployment** and by design manipulates the host's live netwo
 | Login | No brute-force protection, timing oracle, open redirect | `5/min` limit, constant-time compare, same-host redirects only (including browser URL-parsing quirks such as `/\evil`) |
 | Headers | None | `X-Frame-Options`, `nosniff`, `Referrer-Policy`, HSTS, CSP |
 | Error handling | 500 returned the exception string; import echoed exception text *(fixed in v9.2.1)* | Generic messages; detail in the log only |
-| Deployment | Unconfined systemd root (all 40 capabilities); install owned by the cloning user | Sandboxed unit confined to `CAP_NET_ADMIN` + `CAP_NET_RAW`; install owned by root |
-| User management | Hand-edit `users.json` | Admin-only dashboard section; `tc-lab reset-admin-password` for recovery; `users.json` is `0600` |
+| Deployment | Unconfined systemd root (all 40 capabilities); install owned by the cloning user | Its own unprivileged user, `tc-lab`, holding only `CAP_NET_ADMIN` + `CAP_NET_RAW` *(v9.3)*; the whole filesystem read-only to it except `/var/lib/tc_lab` and a private, throwaway `/tmp` *(v9.3)*; code owned by root; sandboxed unit |
+| User management | Hand-edit `users.json` | Admin-only dashboard section; `tc-lab reset-admin-password` for recovery; the state directory, accounts included, is readable only by the service |
 
 ## Remaining limitations
 
 | Risk | Severity | Notes |
 |---|---|---|
-| Runs as root | High | Required for `tc`/`ip`/`bridge`. The unit bounds it to 2 capabilities (`NET_ADMIN`, `NET_RAW`) — no module loading, no `ptrace`, no permission overrides. But it still runs as UID 0, and `ProtectSystem=full` leaves `/var` writable, so it can write root-owned files there. Capability bounding narrows a compromise; it is not a hard boundary. Keep it on an isolated lab network. |
+| Network-admin rights on the host | Medium | TC Lab's job is to change the host's interfaces, so the service holds `CAP_NET_ADMIN` (and `CAP_NET_RAW`) in the host's network. Since v9.3 it runs as its own unprivileged user and can write only `/var/lib/tc_lab`, so a compromise can no longer edit system files. It could still reconfigure any interface on the host — including the management one — and send or receive raw IP packets (packet-capture sockets are blocked by the unit). Getting full root would take a Linux kernel bug, and `CAP_NET_ADMIN` reaches more of the kernel than an ordinary process does. Keep it on an isolated lab network. |
 | Built-in WSGI server | Low–Med | Werkzeug's server (threaded). Fine for a single-operator lab on a trusted network; not for many concurrent users. |
-| Self-signed TLS | Low | Encrypts traffic; no identity verification. Import `cert.pem` as a trusted CA, or drop in your own cert/key. |
+| Self-signed TLS | Low | Encrypts traffic; no identity verification. Import `/var/lib/tc_lab/cert.pem` as a trusted CA, or drop in your own cert/key. |
 | Single-process rate-limit / session store | Low | In-memory; counters reset on restart. Adequate for one instance. |
-| "Keep me signed in" has no server-side expiry | Low | The 7-day limit is the cookie's expiry, enforced by the browser; the value is signed, not timed (Flask-Login's design). A copied cookie stays valid until the signing key changes. Leave the box unticked on shared machines; delete `secret_key.txt` and restart to sign everyone out. |
+| "Keep me signed in" has no server-side expiry | Low | The 7-day limit is the cookie's expiry, enforced by the browser; the value is signed, not timed (Flask-Login's design). A copied cookie stays valid until the signing key changes. Leave the box unticked on shared machines; delete `/var/lib/tc_lab/secret_key.txt` and restart to sign everyone out. |
 | CSP allows `'unsafe-inline'` | Low | The SPA relies on inline scripts/handlers; CSP still blocks external script/resource loads and framing. |
 
 ## Recommended Deployment
 
-- Install with `setup.sh`, which deploys the sandboxed, capability-bounded systemd unit.
-- Set `bind_address` in `config.json` to your management IP; firewall port 5000 to admin
-  workstations only.
+- Install with `setup.sh`, which creates the `tc-lab` service user and deploys the
+  sandboxed systemd unit.
+- Set `bind_address` in `/var/lib/tc_lab/config.json` to your management IP; firewall the
+  dashboard port (5000 unless you changed it) to admin workstations only.
 - Change the default `admin / tclab123` password on first login.
 - Give day-to-day operators the **`user`** role; keep **`admin`** for topology and
   account changes. Create accounts from the dashboard's Users section.

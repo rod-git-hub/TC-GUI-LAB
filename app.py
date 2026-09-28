@@ -1,4 +1,4 @@
-"""app.py v9.2.1"""
+"""app.py v9.3"""
 import os, sys, json, logging, subprocess, threading
 from datetime import timedelta
 from pathlib import Path
@@ -77,6 +77,12 @@ NET_CONFIG_FILE = STATE_DIR / "network_config.json"   # ← persistence for brid
 PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 
 VALID          = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
+
+# A lab bridge joins the two sides of one path: exactly what the round-trip
+# totals on the bridge card assume (one member per direction).
+MAX_BRIDGE_MEMBERS = 2
+MEMBERS_MSG = ("A bridge has at most 2 members — one for each side of the lab path. "
+               "Remove one first.")
 DEFAULT_CONFIG = {"idle_timeout_minutes": 30, "bind_address": "0.0.0.0", "port": DEFAULT_PORT}
 
 # ── Error handler ──────────────────────────────────────────────────────────────
@@ -338,6 +344,9 @@ def _sanitize_bundle(bundle):
             for m in members:
                 if not _name_ok(m):
                     raise ValueError(f"invalid bridge member: {_show(m)}")
+            if len(members) > MAX_BRIDGE_MEMBERS:
+                raise ValueError(f"bridge {_show(br)} has {len(members)} members "
+                                 f"(at most {MAX_BRIDGE_MEMBERS})")
             cn["bridges"][br] = {"members": list(members),
                                  "stp": bool(info.get("stp", False))}
         vlans = net.get("vlans") or []
@@ -604,7 +613,11 @@ def api_bridge_updown(name):
 @admin_required
 def api_add_member(name):
     data = request.get_json(silent=True) or {}
-    r = add_member(vname(name), vname(data.get("iface", "")))
+    name, iface = vname(name), vname(data.get("iface", ""))
+    members = get_all_bridges().get(name, {}).get("members", [])
+    if len(members) >= MAX_BRIDGE_MEMBERS and iface not in members:
+        return jsonify({"ok": False, "stderr": MEMBERS_MSG}), 400
+    r = add_member(name, iface)
     if r["ok"]: save_net_config()          # ← persist
     return jsonify(r)
 

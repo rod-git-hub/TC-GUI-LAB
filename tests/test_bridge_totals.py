@@ -104,3 +104,29 @@ def test_import_of_v92_bundle_drops_bridge_entry(lab, monkeypatch):
               "network": {"bridges": {BR: {"members": [M1, M2], "stp": False}}, "vlans": []}}
     assert lab.post("/api/import", json=bundle).status_code == 200
     assert BR not in app._state and app._state[M2] == {"latency_ms": 10}
+
+
+# ── At most two members (Rod, 2026-09-28: an SD-WAN lab path has two sides) ──
+def test_third_member_is_refused(lab, monkeypatch):
+    added = []
+    monkeypatch.setattr(app, "add_member", lambda br, i: added.append((br, i)) or {"ok": True})
+    monkeypatch.setattr(app, "save_net_config", lambda: None)
+    r = lab.post(f"/api/bridges/{BR}/members", json={"iface": "eth1.300"})
+    assert r.status_code == 400 and "at most 2 members" in r.get_json()["stderr"]
+    assert added == []
+
+
+def test_second_member_is_accepted(lab, monkeypatch):
+    monkeypatch.setattr(app, "get_all_bridges",
+                        lambda: {BR: {"members": [M1], "state": "up"}})
+    added = []
+    monkeypatch.setattr(app, "add_member", lambda br, i: added.append((br, i)) or {"ok": True})
+    monkeypatch.setattr(app, "save_net_config", lambda: None)
+    assert lab.post(f"/api/bridges/{BR}/members", json={"iface": M2}).get_json()["ok"]
+    assert added == [(BR, M2)]
+
+
+def test_import_refuses_a_three_member_bridge(lab):
+    bundle = {"network": {"bridges": {BR: {"members": [M1, M2, "eth1.300"]}}, "vlans": []}}
+    r = lab.post("/api/import", json=bundle)
+    assert r.status_code == 400 and "at most 2" in r.get_json()["stderr"]

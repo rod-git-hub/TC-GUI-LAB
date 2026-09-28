@@ -32,7 +32,8 @@ try:
 except ImportError as e:                                    # pragma: no cover
     sys.exit(f"error: cannot import the application (auth.py): {e}\n"
              "Run this from the TC Lab install directory, e.g.\n"
-             "  cd /opt/tc_lab && sudo venv/bin/python cli.py reset-admin-password")
+             "  cd /opt/tc_lab && sudo TC_LAB_STATE_DIR=/var/lib/tc_lab "
+             "venv/bin/python cli.py reset-admin-password")
 
 ADMIN_USER = "admin"
 EXIT_OK, EXIT_ERR, EXIT_PERM = 0, 1, 2

@@ -21,9 +21,10 @@ see [deployment.md](deployment.md) and [upgrading.md](upgrading.md).
 7. [Profiles and lab config](#7-profiles-and-lab-config)
 8. [Users](#8-users-admin-only)
 9. [Settings](#9-settings)
-10. [What each role can do](#10-what-each-role-can-do)
-11. [The `tc-lab` command](#11-the-tc-lab-command)
-12. [Good to know](#12-good-to-know)
+10. [Help and About](#10-help-and-about)
+11. [What each role can do](#11-what-each-role-can-do)
+12. [The `tc-lab` command](#12-the-tc-lab-command)
+13. [Good to know](#13-good-to-know)
 
 ---
 
@@ -38,7 +39,7 @@ test — for example two FortiGates. The usual layout:
 You bridge two VLANs together, so traffic flows from one device, through TC Lab, to
 the other — and every impairment you set is applied to that traffic.
 
-![Reference topology](https://github.com/user-attachments/assets/f0ad6610-5d49-46e8-9d68-17c4d95112ad)
+![Reference topology](img/00-topology.png)
 
 Plain physical interfaces work too; VLANs just let one NIC carry several paths.
 
@@ -50,7 +51,8 @@ listens only on the management IP — see
 
 ## 2. Signing in
 
-Browse to `https://<host>:5000`.
+Browse to `https://<host>:5000` — or the port your administrator chose (see
+[Settings](#9-settings)).
 
 ![Sign in](img/01-login.png)
 
@@ -74,7 +76,7 @@ Browse to `https://<host>:5000`.
 
 | | |
 |---|---|
-| **v9.2.1** | the version you are running |
+| **v9.3** | the version you are running |
 | **6 ifaces** | interfaces you can impair directly — physical NICs and VLAN sub-interfaces |
 | **2 bridges** | bridges on the host (their members are the interfaces counted above) |
 | **2 tc active** | interfaces with an impairment currently applied |
@@ -83,7 +85,7 @@ Browse to `https://<host>:5000`.
 | ⎋ | sign out |
 
 **Sidebar:** TC Emulation, Interfaces / VLANs, Bridge Manager, Profiles, and — for
-admins — Users. Your name and role are shown at the bottom.
+admins — Users; under *Reference*, Help. Your name and role are shown at the bottom.
 
 When the dashboard starts it scans the host, and a green banner lists any interfaces
 that already had impairments applied (**"Startup: detected tc on …"**). Those cards
@@ -94,7 +96,8 @@ show **"tc active — loaded from scan"**.
 ## 4. TC Emulation — applying impairments
 
 This is where you spend most of your time. There is one card per bridge, then one
-per **standalone** interface (an interface that is not a bridge member).
+per **standalone** interface (an interface that is not a bridge member). A bridge's
+members are reached from its card, under **Member controls**.
 
 ![TC Emulation](img/02-tc-emulation.png)
 
@@ -123,21 +126,31 @@ per **standalone** interface (an interface that is not a bridge member).
 
 ### Impairing a bridge
 
-A bridge card applies the values **across its members**, so the path end to end gets
-what you asked for:
+A bridge has no impairment of its own: its two members carry it, and the bridge
+card always shows **the total of its members**. `tc` shapes traffic *leaving* an
+interface, so each member delays one direction of the path — the total is the
+**round trip**.
 
-- **Latency and jitter are divided** between the members. With two members, a
-  150 ms target becomes 75 ms on each.
-- **Loss, duplication and corruption are compounded**, not halved: with two members,
-  a 2% loss target becomes 1.005% on each, which adds up to exactly 2% across both.
-- **Rate is applied to each member unchanged.**
+**Apply on the bridge** splits the values equally across the members, so the round
+trip gets what you asked for:
 
-The card reminds you of this: *"Apply splits values across 2 members"*.
+- **Latency and jitter are divided** between the members: a 50 ms target becomes
+  25 ms on each, and the bridge shows 50 ms.
+- **Loss, duplication and corruption are compounded**, not halved: a 2% loss target
+  becomes 1.005% on each, which adds up to exactly 2% across both.
+- **Rate is applied to each member unchanged**; the bridge shows the slower member's
+  rate.
+
+Applying on the bridge replaces anything set on the members one by one — the card
+says so: *"Shows the round-trip total of its 2 members. Apply splits it equally…"*.
+The tags above it show each member's latency, such as `eth1.100 ● 25 ms`.
 
 ### Member controls
 
-**Member controls** on a bridge card opens each member on its own, so you can
-fine-tune one side of the path. Each member shows the split value the bridge applied.
+**Member controls** on a bridge card opens each member on its own, so you can set
+one side of the path differently — for an uneven path, 10 ms one way and 40 ms the
+other. Apply on a member changes only that member, and the bridge card shows the new
+total straight away: here, 50 ms.
 
 ![Member controls](img/09-member-controls.png)
 
@@ -174,13 +187,17 @@ through TC Lab.
 
 ![Bridge Manager](img/04-bridge-manager.png)
 
-**Create a bridge** *(admin)*: give it a name, pick up to two members from the
+**Create a bridge** *(admin)*: give it a name, pick its two members from the
 interfaces that are not already in a bridge, and create it. STP (Spanning Tree) is off
 by default, which is what a simple two-port lab path wants.
 
+A bridge has **at most two members** — one for each side of the lab path. TC Lab
+refuses a third.
+
 On an existing bridge you can:
 
-- add a member (**+**) or remove one (**×** on its tag),
+- add a member (**+**, shown while it has fewer than two) or remove one (**×** on its
+  tag),
 - bring the bridge up (↑) or down (↓),
 - view statistics, or delete the bridge.
 
@@ -230,15 +247,16 @@ the entire setup: bridges and VLANs, impairments, interface notes and every prof
 **Import Config** *(admin)* loads such a file — on the same host to restore it, or on
 another TC Lab host to recreate the lab there. Import:
 
-- checks **every** name and value first, and refuses the whole file if anything is
-  invalid — nothing is half-imported;
+- checks **every** name and value first — including that no bridge has more than two
+  members — and refuses the whole file if anything is invalid; nothing is
+  half-imported;
 - saves the topology, impairments, notes and profiles, creates any bridges or VLANs
   that do not exist yet, and applies the impairments straight away (a file with no
   topology in it only saves them; they take effect at the next service restart);
 - does not change accounts or settings.
 
-Files exported from v9.1 import into v9.2.1, as long as their names follow the rules
-in [section 5](#5-interfaces--vlans).
+Files exported from v9.1 and v9.2 import into v9.3, as long as their names follow the
+rules in [section 5](#5-interfaces--vlans).
 
 ---
 
@@ -269,13 +287,36 @@ Open it with ⚙ in the top bar.
 - **Change Password** — your own. Everyone can do this.
 - **Idle Timeout** *(admins only — the section is hidden for other users)* — minutes
   of inactivity before sign-out; **0** disables it.
-- **Appearance** — dark or light. The choice is remembered by your browser.
+- **Service Port** *(admins only)* — the port the dashboard listens on, from 1024 to
+  65535. **Change port** asks you to confirm, then TC Lab restarts on the new port
+  within a few seconds — impairments keep running — and the page moves to the new
+  address; you stay signed in. A port something else is using is refused. If a
+  firewall only allows the old port you will lose access: on the host,
+  `sudo tc-lab set-port <old port>` and `sudo systemctl restart tc_lab` put it back.
+- **Appearance** — dark or light. The choice is remembered by your browser, for each
+  address — so after a port change you may need to pick it again.
 
 ![Light theme](img/06-light-theme.png)
 
 ---
 
-## 10. What each role can do
+## 10. Help and About
+
+**Help**, in the sidebar, has this guide and the rest of TC Lab's documentation —
+installing, upgrading, users and security, what's new — for the version you are
+running. It comes with TC Lab, so it works without internet access. Links between the
+documents open inside Help.
+
+![Help](img/12-help.png)
+
+**About**, the last button in Help, shows the version you are running and links to the
+project on GitHub, its releases, and how to report a security issue.
+
+![About](img/13-about.png)
+
+---
+
+## 11. What each role can do
 
 | | `admin` | `user` |
 |---|:-:|:-:|
@@ -285,10 +326,11 @@ Open it with ⚙ in the top bar.
 | Save, load and delete profiles | ✓ | ✓ |
 | Export the lab config | ✓ | ✓ |
 | Change their own password | ✓ | ✓ |
+| Read Help and About | ✓ | ✓ |
 | Create and delete VLANs and bridges; add and remove members | ✓ | |
 | Bring interfaces, VLANs and bridges up or down | ✓ | |
 | Import a lab config | ✓ | |
-| Change the idle timeout | ✓ | |
+| Change the idle timeout and the service port | ✓ | |
 | Manage accounts | ✓ | |
 
 A `user` sees the same pages without the controls they cannot use — here, the Bridge
@@ -301,7 +343,7 @@ The server enforces these rules itself, so hiding a button is only a convenience
 
 ---
 
-## 11. The `tc-lab` command
+## 12. The `tc-lab` command
 
 On the TC Lab host itself:
 
@@ -313,6 +355,7 @@ tc-lab --help
 |---|---|
 | `sudo tc-lab reset-admin-password` | set a new password for `admin` when it has been lost |
 | `sudo tc-lab list-users` | list accounts and roles (`--json` for scripts) |
+| `sudo tc-lab set-port 5000` | set the dashboard port — the way back if a new port cannot be reached; then `sudo systemctl restart tc_lab` |
 | `tc-lab --version` | show the installed version |
 
 The reset asks for the new password twice without showing it, applies the same rules
@@ -321,12 +364,14 @@ account — recreating it if it had been deleted.
 
 ---
 
-## 12. Good to know
+## 13. Good to know
 
 - **Impairments live in the kernel.** Stopping or restarting the service does not
   remove them, and the service re-applies saved ones after a reboot.
 - **After an upgrade, hard-refresh the browser** (Ctrl-Shift-R). An old cached page
   makes every action fail with *"The CSRF token is missing."*
+- **The page refreshes itself every 20 seconds.** Impairment values you have typed but
+  not yet applied are kept until you click Apply or Reset.
 - **Keep the dashboard on the management network.** Anyone who can reach port 5000
   can try to sign in; see [users-and-security.md](users-and-security.md).
 - **Something not working?** Service logs: `journalctl -u tc_lab -n 100`. More in

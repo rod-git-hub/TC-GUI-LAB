@@ -14,14 +14,13 @@ PY="${INSTALL_DIR}/venv/bin/python"
   exit 1
 }
 
-# Match the service's state directory unless the caller overrode it:
-# /var/lib/tc_lab from v9.3 on, the install directory before that.
+# Use the state directory the installed service uses, unless the caller
+# overrode it: the unit's TC_LAB_STATE_DIR (/var/lib/tc_lab from v9.3 on), or
+# the install directory for a unit that has none (before v9.3).
 if [ -z "${TC_LAB_STATE_DIR:-}" ]; then
-  if [ -d /var/lib/tc_lab ] && [ ! -f "${INSTALL_DIR}/users.json" ]; then
-    TC_LAB_STATE_DIR=/var/lib/tc_lab
-  else
-    TC_LAB_STATE_DIR="$INSTALL_DIR"
-  fi
+  UNIT="${TC_LAB_UNIT_DIR:-/etc/systemd/system}/${TC_LAB_SERVICE:-tc_lab}.service"
+  TC_LAB_STATE_DIR=$(sed -n 's/^Environment=TC_LAB_STATE_DIR=//p' "$UNIT" 2>/dev/null | head -1)
+  TC_LAB_STATE_DIR="${TC_LAB_STATE_DIR:-$INSTALL_DIR}"
 fi
 export TC_LAB_STATE_DIR
 

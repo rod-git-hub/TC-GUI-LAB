@@ -889,6 +889,7 @@ body.is-admin .tab.admin-only{display:flex}
 
 <script>
 let ifaces=[],bridges={},ifMeta={},unbridged=[],tcState={},profiles={},labels={},totals={};
+let helpIndex=null,helpPage=null;      // Help: page list from the server, page shown
 let vlanData={vlans:[],physical:[]};
 let idleTimeout=30, lastActivity=Date.now(), idleWarningShown=false;
 
@@ -1154,13 +1155,13 @@ function renderTCGrid(){
 // A member's tag on its bridge: its name, and its latency when impaired.
 function memberChip(m){
   const c=tcState[m]||{},hasTC=Object.values(c).some(x=>x>0),lat=Number(c.latency_ms)||0;
-  return `<span class="tag ${hasTC?'tG':'tB'}" id="chip-${m.replace(/[^a-z0-9]/gi,'_')}"
+  return `<span class="tag ${hasTC?'tG':'tB'}" id="mchip-${m.replace(/[^a-z0-9]/gi,'_')}"
     style="font-size:.68rem">${esc(m)}${hasTC?' ●'+(lat?` ${lat}&nbsp;ms`:''):''}</span>`;}
 // After a bridge or one of its members changes: show the new total and chips.
 function refreshBridge(br,total){
   if(total){totals[br]=total;setConf(br,total);}
   ((bridges[br]||{}).members||[]).forEach(m=>{
-    const el=document.getElementById('chip-'+m.replace(/[^a-z0-9]/gi,'_'));
+    const el=document.getElementById('mchip-'+m.replace(/[^a-z0-9]/gi,'_'));
     if(el) el.outerHTML=memberChip(m);});}
 function getConf(iface){
   const id=iface.replace(/[^a-z0-9]/gi,'_');
@@ -1358,7 +1359,7 @@ function renderBrTab(){
         ${admin?`<button class="bG btn-xs" title="Bring up" onclick="doBrUp('${br}',true)"><svg class="ic"><use href="#i-up"/></svg></button>
         <button class="bR btn-xs" title="Bring down" onclick="doBrUp('${br}',false)"><svg class="ic"><use href="#i-down"/></svg></button>`:''}</div></td>
       <td><div class="actions">${mbHtml||'<span class="muted">none</span>'}
-        ${admin?`<button class="bB btn-xs" title="Add member" onclick="promptAddMember('${br}')"><svg class="ic"><use href="#i-plus"/></svg></button>`:''}</div></td>
+        ${admin&&mbs.length<2?`<button class="bB btn-xs" title="Add member" onclick="promptAddMember('${br}')"><svg class="ic"><use href="#i-plus"/></svg></button>`:''}</div></td>
       <td><div class="actions">
         <button class="bY btn-xs" title="Bridge statistics" onclick="showBrStats('${br}')"><svg class="ic"><use href="#i-chart"/></svg></button>
         ${admin?`<button class="bR btn-xs" title="Delete bridge" onclick="doDelBridge('${br}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:''}</div></td></tr>`;
@@ -1684,7 +1685,6 @@ async function doRefresh(btn){
 loadRole();
 // ── Help ──────────────────────────────────────────────────────────────────
 // Pages are rendered by the server from the Markdown shipped with this install.
-let helpIndex=null,helpPage=null;
 async function openHelp(page,anchor){
   if(!helpIndex){const d=await api('/api/help');if(!d||!d.pages)return;helpIndex=d;}
   page=page||helpPage||'guide';

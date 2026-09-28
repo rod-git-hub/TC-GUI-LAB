@@ -256,3 +256,54 @@ def test_low_port_from_old_install_is_flagged(box):
     out = setup(box, "--keep-users")
     assert "cannot listen below 1024" in out
     assert "Open:          https://" in out and ":5000" in out
+
+
+# ── The installed unit is the source of truth (v9.3) ──────────────────────────
+def test_upgrade_reuses_the_installed_state_dir_and_user(box):
+    """A custom TC_LAB_STATE_DIR / TC_LAB_USER need not be repeated: an upgrade
+    reads them back from the installed unit. (Fake root cannot create
+    /var/lib/tc_lab, so falling back to the default would fail this test.)"""
+    setup(box)
+    (box.state / "labels.json").write_text('{"eth1.100": "kept"}')
+    for var in ("TC_LAB_STATE_DIR", "TC_LAB_USER"):
+        box.env.pop(var)
+    setup(box, "--keep-users")
+    assert json.loads((box.state / "labels.json").read_text()) == {"eth1.100": "kept"}
+    unit = box.unit.read_text()
+    assert f"ReadWritePaths={box.state}" in unit and "User=root" in unit
+
+
+def test_stray_state_in_install_dir_never_replaces_the_real_state(box):
+    """e.g. someone ran app.py by hand from /opt/tc_lab: those files are not
+    the service's, and must not be taken for pre-v9.3 state to migrate."""
+    setup(box)
+    real = box.state / "users.json"
+    real.write_text('{"admin": {"hash": "real", "role": "admin"}}')
+    (box.install / "users.json").write_text('{"admin": {"hash": "stray", "role": "admin"}}')
+    out = setup(box, "--keep-users")
+    assert "does not use" in out
+    assert json.loads(real.read_text())["admin"]["hash"] == "real"
+    assert not list(box.root.joinpath("var", "lib").glob("tc_lab.replaced-*"))
+
+
+@pytest.mark.parametrize("layout", ["v9.3", "pre-9.3"])
+def test_tc_lab_command_uses_the_services_state_dir(box, layout):
+    setup(box)
+    store = box.state if layout == "v9.3" else box.install
+    if layout == "pre-9.3":                     # a unit without TC_LAB_STATE_DIR
+        box.unit.write_text("\n".join(l for l in box.unit.read_text().splitlines()
+                                      if not l.startswith("Environment=TC_LAB_STATE_DIR")))
+    (store / "users.json").write_text('{"admin": {"hash": "x", "role": "admin"}}')
+    env = {k: v for k, v in box.env.items() if k != "TC_LAB_STATE_DIR"}
+    r = subprocess.run(["unshare", "-r", "bash", str(box.install / "tc-lab"), "list-users"],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert f"in {store}/users.json" in r.stdout
+
+
+def test_snapshot_is_labelled_with_the_version(box):
+    """--list-backups shows it; it used to read ".v9.2.1" (the dot of "app.py")."""
+    legacy_install(box)
+    setup(box, "--keep-users")
+    label = next(box.backups.glob("*.tgz.version")).read_text().strip()
+    assert label == "v9.2.1"

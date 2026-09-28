@@ -37,7 +37,7 @@ its password is lost. No database, no external identity provider.
 ## 2. How accounts are stored
 
 All accounts live in a single JSON file — `users.json` in the state directory
-(`/opt/tc_lab/users.json` in a standard install):
+(`/var/lib/tc_lab/users.json` in a standard install):
 
 ```json
 {
@@ -55,7 +55,8 @@ All accounts live in a single JSON file — `users.json` in the state directory
 - The JSON key is the username.
 - `hash` is a bcrypt hash — **the plaintext password is never stored anywhere**.
 - `role` is `admin` or `user`.
-- The file is `chmod 600` (root-only) as of v9.2.
+- The file is `chmod 600`, in a state directory that only the service's own user,
+  `tc-lab`, can open.
 
 There is no database. This is deliberate: the whole tool is file-backed so a lab
 can be copied, versioned, or wiped by moving files around.
@@ -154,7 +155,8 @@ It will:
 4. Write a backup of the account store (`users.json.bak`, mode `0600`).
 5. Update **only** the `admin` account's hash — every other account, role and
    application setting is left exactly as it was.
-6. Read the file back and verify the new password before reporting success.
+6. Keep the file owned by the service's user, so the dashboard can still read it.
+7. Read the file back and verify the new password before reporting success.
 
 If the `admin` account has been deleted entirely, the command recreates it with
 the admin role and preserves all other accounts.
@@ -163,10 +165,13 @@ Related:
 
 ```bash
 sudo tc-lab list-users        # usernames and roles — never hashes
+sudo tc-lab set-port 5000     # move the dashboard back to port 5000 (then restart)
 sudo tc-lab --help
 ```
 
-Under a non-standard install path, point the wrapper at it:
+The command finds the accounts through the installed service, including a
+non-standard state directory. Under a non-standard install path, point it at the
+code:
 
 ```bash
 sudo TC_LAB_DIR=/srv/tc_lab tc-lab reset-admin-password
@@ -175,7 +180,7 @@ sudo TC_LAB_DIR=/srv/tc_lab tc-lab reset-admin-password
 Or run the module directly:
 
 ```bash
-cd /opt/tc_lab && sudo venv/bin/python cli.py reset-admin-password
+cd /opt/tc_lab && sudo TC_LAB_STATE_DIR=/var/lib/tc_lab venv/bin/python cli.py reset-admin-password
 ```
 
 > **Last resort** (loses every account): stop the service, delete `users.json`,
@@ -225,7 +230,7 @@ cannot be pointed at someone else's account) but only an `admin` can reset
 | Property | Value |
 |---|---|
 | Mechanism | Flask-Login, signed cookie |
-| Signing key | `secret_key.txt` — 32 random bytes, `chmod 600`, generated on first run |
+| Signing key | `/var/lib/tc_lab/secret_key.txt` — 32 random bytes, `chmod 600`, generated on first run |
 | Cookie flags | `Secure`, `HttpOnly`, `SameSite=Strict` |
 | Session lifetime | 12 hours |
 | Idle timeout | configurable, default 30 min, with a 60-second warning |
@@ -244,8 +249,8 @@ browser keeps working until the signing key changes. If `secret_key.txt` is dele
 
 ## 7. Securing the deployment
 
-TC Lab reconfigures live networking as root. Treat access to it as equivalent to
-root shell access on that host.
+TC Lab reconfigures the host's live networking. Treat access to it as close to
+administrator access on that host: through it, any interface can be changed.
 
 **Do these:**
 
@@ -256,27 +261,30 @@ root shell access on that host.
    ```
    (`192.0.2.x` is a documentation-only range — use your own management IP.)
    Otherwise the UI listens on every interface — including the lab NICs.
-3. **Firewall the port** to your admin workstations:
+3. **Firewall the dashboard port** (5000 unless you changed it) to your admin
+   workstations:
    ```bash
    sudo apt install -y nftables
    sudo nft add rule inet filter input tcp dport 5000 ip saddr != 192.0.2.0/24 drop
    ```
    (or the equivalent `ufw`/`iptables` rule for your setup)
-4. **Install with `setup.sh`**, which deploys the sandboxed unit: a capability
-   bounding set instead of all of root's capabilities, a read-only view of the
-   system outside `/opt/tc_lab`, and an install directory owned by root.
+4. **Install with `setup.sh`**, which deploys the sandboxed unit: TC Lab runs as its
+   own unprivileged user, `tc-lab`, with only `CAP_NET_ADMIN` and `CAP_NET_RAW`; the
+   whole system is read-only to it except `/var/lib/tc_lab`; its code is owned by
+   root.
 5. **Give operators the `user` role**, not `admin`. Create their accounts from
    Users → Create Account; keep the number of admins small.
 6. **Trust the certificate** rather than clicking through the warning every time:
-   import `cert.pem` into your browser's authority store. Or drop in a real
-   cert — replace `cert.pem` / `key.pem` and restart.
+   import `/var/lib/tc_lab/cert.pem` into your browser's authority store. Or drop
+   in a real certificate — see [TLS certificate](deployment.md#tls-certificate).
 7. **Keep it off the internet.** No exceptions. It is a lab tool.
-8. **Back up** `users.json`, `config.json`, `network_config.json` and `profiles/`.
+8. **Back up** `/var/lib/tc_lab` — accounts, settings, topology and profiles are all
+   in it (the upgrade snapshots in `/var/backups/tc-lab` are on the same disk).
 
-**Already handled for you in v9.2:** CSRF tokens, hardened session cookies,
-security headers (`X-Frame-Options: DENY`, `nosniff`, CSP, HSTS), login rate
-limiting, constant-time login, validated config import, HTML escaping throughout,
-and a sandboxed systemd unit.
+**Already handled for you:** CSRF tokens, hardened session cookies, security headers
+(`X-Frame-Options: DENY`, `nosniff`, CSP, HSTS), login rate limiting, constant-time
+login, validated config import, HTML escaping throughout, and a sandboxed systemd
+unit running as its own user.
 
 ---
 
@@ -286,7 +294,7 @@ Honest accounting of what this tool does *not* do.
 
 | Limitation | Impact | Mitigation |
 |---|---|---|
-| Runs as root | a compromise means host control | capability-bounded, sandboxed systemd unit; isolated lab network |
+| Holds network-admin rights on the host | a compromise could reconfigure any interface and see traffic — though not edit system files | own unprivileged user, 2 capabilities, read-only system except its state; isolated lab network |
 | Werkzeug's built-in server | not built for hostile networks | fine for a single operator on a trusted LAN; put a reverse proxy in front for anything larger |
 | Self-signed certificate | encrypts, but proves no identity | import as trusted, or install a real certificate |
 | No audit trail of *who* did what | applied commands are logged, but not the username | account changes (create/delete/role/password-reset) *are* logged with the username; impairment changes are not |
