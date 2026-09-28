@@ -335,3 +335,60 @@ def test_export_bundle_shape_and_version(base):
         app_version = fh.readline().strip().strip('"').split()[-1].lstrip("v")
     assert b["version"] == app_version
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", b["exported"])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v9.3 service confinement: not root, two capabilities, one writable directory
+# ─────────────────────────────────────────────────────────────────────────────
+def _unit():
+    """tc_lab.service as {key: [values]} — keys can repeat."""
+    out = {}
+    with open(os.path.join(_REPO, "tc_lab.service")) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith(("#", "[")) and "=" in line:
+                k, v = line.split("=", 1)
+                out.setdefault(k, []).append(v)
+    return out
+
+
+def test_unit_runs_as_unprivileged_user():
+    u = _unit()
+    assert u["User"] == ["tc-lab"] and u["Group"] == ["tc-lab"]
+    assert u["NoNewPrivileges"] == ["yes"]
+
+
+def test_unit_capabilities_are_exactly_the_bounded_set():
+    """Ambient = bounding: the process gets these and can never gain more."""
+    u = _unit()
+    amb, bnd = set(u["AmbientCapabilities"][0].split()), set(u["CapabilityBoundingSet"][0].split())
+    assert amb == bnd
+    assert "CAP_NET_ADMIN" in amb
+    assert amb <= {"CAP_NET_ADMIN", "CAP_NET_RAW"}      # never SYS_MODULE, SYS_ADMIN, ...
+
+
+def test_unit_can_write_only_its_state_dir():
+    u = _unit()
+    assert u["ProtectSystem"] == ["strict"]
+    state = [v.split("=", 1)[1] for v in u["Environment"] if v.startswith("TC_LAB_STATE_DIR=")]
+    assert u["ReadWritePaths"] == state == ["/var/lib/tc_lab"]
+    assert u["WorkingDirectory"] == ["/opt/tc_lab"]     # code: read-only to the service
+
+
+@pytest.mark.parametrize("capeff,expected", [
+    ("0000000000003000", True),     # NET_ADMIN + NET_RAW — the systemd unit
+    ("0000000000001000", True),     # NET_ADMIN alone
+    ("000001ffffffffff", True),     # full root
+    ("0000000000002000", False),    # NET_RAW alone
+    ("0000000000000000", False),    # an ordinary user
+    ("zz", False),
+])
+def test_startup_capability_check(capeff, expected):
+    """Start-up warns when ip/tc changes will fail. It must look at the
+    capability, not the UID — the service is no longer root."""
+    status = f"Name:\tpython\nCapPrm:\t{capeff}\nCapEff:\t{capeff}\n"
+    assert app._has_net_admin(status) is expected
+
+
+def test_startup_capability_check_without_capeff_line():
+    assert app._has_net_admin("Name:\tpython\n") is False

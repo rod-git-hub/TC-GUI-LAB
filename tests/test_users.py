@@ -220,6 +220,32 @@ def test_cli_writes_backup(store, monkeypatch):
     assert auth.USERS_FILE.with_suffix(".json.bak").exists()
 
 
+def test_cli_hands_written_files_to_the_service_user(store, monkeypatch):
+    """v9.3: the service runs as its own user. Files root writes here — above
+    all a users.json recreated from scratch — must end up owned by that user,
+    or the service cannot read them and nobody can sign in."""
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(cli, "_state_owner", lambda: (4242, 4243))
+    chowned = {}
+    monkeypatch.setattr(cli.os, "chown", lambda p, u, g: chowned.__setitem__(str(p), (u, g)))
+    auth.USERS_FILE.unlink()                          # force a brand-new store
+    assert cli.main(["reset-admin-password", "--password", "freshstorepw1"]) == cli.EXIT_OK
+    assert chowned[str(auth.USERS_FILE)] == (4242, 4243)
+
+    cli.main(["reset-admin-password", "--password", "secondresetpw"])   # now with a backup
+    assert chowned[str(auth.USERS_FILE.with_suffix(".json.bak"))] == (4242, 4243)
+
+
+def test_cli_leaves_ownership_alone_when_root_owns_the_state(store, monkeypatch):
+    """Before v9.3 the state is root's; nothing to hand over."""
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(cli, "_state_owner", lambda: (0, 0))
+    chowned = []
+    monkeypatch.setattr(cli.os, "chown", lambda *a: chowned.append(a))
+    assert cli.main(["reset-admin-password", "--password", "legacylayout1"]) == cli.EXIT_OK
+    assert chowned == []
+
+
 def test_cli_list_users_hides_hashes(store, monkeypatch, capsys):
     monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
     assert cli.main(["list-users"]) == cli.EXIT_OK

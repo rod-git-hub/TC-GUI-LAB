@@ -109,7 +109,8 @@ def create_vlan(parent, vlan_id, name=""):
     if not name: name = f"{parent}.{vlan_id}"
     if not (1 <= vlan_id <= 4094):
         return {"ok": False, "stderr": f"VLAN ID {vlan_id} out of range"}
-    _run(["modprobe", "8021q"])
+    # No modprobe: the kernel loads 8021q itself when `ip link add ... type
+    # vlan` needs it, and the confined service could not load modules anyway.
     _run(["ip", "link", "set", parent, "up"])
     rc, _, err = _run(["ip", "link", "add", "link", parent,
                         "name", name, "type", "vlan", "id", str(vlan_id)])

@@ -57,8 +57,9 @@ def _security_headers(resp):
         "base-uri 'none'; frame-ancestors 'none'")
     return resp
 
-# All writable state lives under STATE_DIR (default: cwd, i.e. /opt/tc_lab under
-# systemd). Set TC_LAB_STATE_DIR to move it elsewhere, e.g. onto its own mount.
+# All writable state lives under STATE_DIR: TC_LAB_STATE_DIR, which the systemd
+# unit sets to /var/lib/tc_lab (the only directory the service can write), or
+# the current directory when run by hand from a checkout.
 STATE_DIR      = Path(os.environ.get("TC_LAB_STATE_DIR", "."))
 PROFILES_DIR   = STATE_DIR / "profiles"
 STATE_FILE     = STATE_DIR / "state.json"
@@ -689,10 +690,30 @@ def api_import():
     return jsonify({"ok": True, "version": ver, "imported": imported})
 
 # ── Entry point ────────────────────────────────────────────────────────────────
+CAP_NET_ADMIN = 12
+
+def _has_net_admin(status_text):
+    """True if a /proc/<pid>/status text shows CAP_NET_ADMIN in the effective
+    set. Under systemd the service is not root — it holds this capability
+    instead — so checking the UID would be the wrong test."""
+    for line in status_text.splitlines():
+        if line.startswith("CapEff:"):
+            try:
+                return bool(int(line.split()[1], 16) >> CAP_NET_ADMIN & 1)
+            except (IndexError, ValueError):
+                return False
+    return False
+
 if __name__ == "__main__":
     _init()
-    if os.geteuid() != 0:
-        print("[WARNING] Not root -- tc/bridge/vlan/cert commands require root.")
+    try:
+        with open("/proc/self/status") as f:
+            _can_admin = _has_net_admin(f.read())
+    except OSError:
+        _can_admin = False
+    if not _can_admin:
+        print("[WARNING] No CAP_NET_ADMIN -- tc/bridge/vlan changes will fail. "
+              "Run it as root, or through the systemd unit.")
     from ssl_gen import ensure_cert
     cert, key = ensure_cert()
     bind = _config.get("bind_address", "0.0.0.0")

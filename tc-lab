@@ -14,8 +14,16 @@ PY="${INSTALL_DIR}/venv/bin/python"
   exit 1
 }
 
-# Match the service's state directory unless the caller overrode it.
-export TC_LAB_STATE_DIR="${TC_LAB_STATE_DIR:-$INSTALL_DIR}"
+# Match the service's state directory unless the caller overrode it:
+# /var/lib/tc_lab from v9.3 on, the install directory before that.
+if [ -z "${TC_LAB_STATE_DIR:-}" ]; then
+  if [ -d /var/lib/tc_lab ] && [ ! -f "${INSTALL_DIR}/users.json" ]; then
+    TC_LAB_STATE_DIR=/var/lib/tc_lab
+  else
+    TC_LAB_STATE_DIR="$INSTALL_DIR"
+  fi
+fi
+export TC_LAB_STATE_DIR
 
 cd "$INSTALL_DIR"
 exec "$PY" "${INSTALL_DIR}/cli.py" "$@"

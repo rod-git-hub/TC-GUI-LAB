@@ -96,3 +96,29 @@ def test_foreign_bridges_detected(name):
 ])
 def test_own_bridges_not_treated_as_foreign(name):
     assert bridge_manager.is_foreign_bridge(name) is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v9.3: nothing outside netlink. The service is confined (ProtectKernelTunables,
+# ProtectKernelModules), so writing sysctls or running modprobe would only fail.
+# ─────────────────────────────────────────────────────────────────────────────
+def test_create_bridge_does_not_turn_on_ip_forwarding(monkeypatch):
+    """A bridge forwards at layer 2; setting ip_forward made the host a router."""
+    ran, opened = [], []
+    monkeypatch.setattr(bridge_manager, "_run", lambda cmd: ran.append(cmd) or (0, "", ""))
+    real_open = open
+    monkeypatch.setattr("builtins.open",
+                        lambda f, *a, **k: opened.append(str(f)) or real_open(f, *a, **k))
+    assert bridge_manager.create_bridge("br-wan1")["ok"] is True
+    assert not any("ip_forward" in f or f.startswith("/proc/sys") for f in opened)
+    assert ["ip", "link", "add", "name", "br-wan1", "type", "bridge"] in ran
+
+
+def test_create_vlan_does_not_run_modprobe(monkeypatch):
+    """The kernel loads 8021q itself when `ip link add ... type vlan` needs it."""
+    ran = []
+    monkeypatch.setattr(vlan_manager, "_run", lambda cmd: ran.append(cmd) or (0, "", ""))
+    assert vlan_manager.create_vlan("eth1", 100)["ok"] is True
+    assert not any(cmd[0] == "modprobe" for cmd in ran)
+    assert ["ip", "link", "add", "link", "eth1", "name", "eth1.100",
+            "type", "vlan", "id", "100"] in ran

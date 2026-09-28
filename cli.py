@@ -41,8 +41,8 @@ def _err(msg):
 
 
 def require_root():
-    """The user store is root-owned (0600); refuse early with a clear message
-    rather than failing later on a confusing permission error."""
+    """The user store is private to the service (0600); refuse early with a
+    clear message rather than failing later on a confusing permission error."""
     if os.geteuid() != 0:
         _err("this command must be run as root (try: sudo tc-lab ...)")
         sys.exit(EXIT_PERM)
@@ -61,6 +61,26 @@ def _getpass(prompt):
         print()
         _err("cancelled — password unchanged")
         sys.exit(EXIT_ERR)
+
+
+def _state_owner():
+    """(uid, gid) of the state directory — the account the service runs as."""
+    st = os.stat(auth._SD)
+    return st.st_uid, st.st_gid
+
+
+def _give_to_service(*paths):
+    """This command runs as root, but the service runs as its own user (v9.3+).
+    A file root creates here — users.json when it had been deleted, or the
+    backup — would be root-owned and unreadable to the service, and nobody
+    could sign in. Hand every file written back to the state directory's
+    owner. A no-op on an install where root owns the state (before v9.3)."""
+    uid, gid = _state_owner()
+    if uid == 0:
+        return
+    for p in paths:
+        if os.path.exists(p):
+            os.chown(p, uid, gid)
 
 
 def _prompt_new_password():
@@ -124,6 +144,7 @@ def cmd_reset_admin_password(args):
     users[ADMIN_USER]["role"] = "admin"     # recovery must restore admin rights
     try:
         auth._save_users(users)
+        _give_to_service(users_file, users_file.with_suffix(".json.bak"))
     except OSError as e:
         _err(f"could not write {users_file}: {e}")
         return EXIT_ERR

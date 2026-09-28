@@ -15,13 +15,22 @@
 #   sudo bash setup.sh --rollback NAME  # restore a specific one (see --list-backups)
 #   sudo bash setup.sh --help
 #
-# Every upgrade snapshots the whole install first (code AND state: accounts,
-# certificate, topology, saved impairments) to TC_LAB_BACKUP_DIR, default
-# /var/backups/tc-lab. The five most recent are kept.
+# The code goes to /opt/tc_lab (owned by root). The service runs as the
+# unprivileged system user tc-lab, and everything it writes lives in
+# /var/lib/tc_lab. Upgrading from v9.2.x moves the state there automatically.
+#
+# Every upgrade snapshots code AND state (accounts, certificate, topology,
+# saved impairments) to TC_LAB_BACKUP_DIR, default /var/backups/tc-lab.
+# The five most recent are kept.
 #
 set -euo pipefail
 
 INSTALL_DIR="${TC_LAB_DIR:-/opt/tc_lab}"
+# Everything the service writes: accounts, settings, certificate, saved
+# impairments, topology, profiles. Owned by SVC_USER; the code stays root's.
+STATE_DIR="${TC_LAB_STATE_DIR:-/var/lib/tc_lab}"
+# The unprivileged system user the service runs as. Override for scratch installs.
+SVC_USER="${TC_LAB_USER:-tc-lab}"
 # Service name. Override to install a second instance, or to exercise this
 # script against a scratch unit without touching a live one.
 SERVICE="${TC_LAB_SERVICE:-tc_lab}"
@@ -39,7 +48,7 @@ ACTION="install"
 ROLLBACK_NAME=""
 
 usage() {
-    sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -67,11 +76,58 @@ done
 case ":${PATH}:" in *:/usr/sbin:*) ;; *) PATH="${PATH}:/usr/sbin:/sbin" ;; esac
 export PATH
 
+[ "${STATE_DIR}" != "${INSTALL_DIR}" ] || {
+    echo "error: TC_LAB_STATE_DIR must not be the install directory" >&2; exit 1; }
+
+# ── Service user, state directory, unit ────────────────────────────────────
+# Runtime state files. Before v9.3 they lived in the install directory; from
+# v9.3 on they live in STATE_DIR. (Plus users.json.*.bak, *.log and profiles/.)
+STATE_FILES="users.json users.json.bak secret_key.txt cert.pem key.pem
+             state.json network_config.json labels.json config.json"
+
+ensure_service_user() {
+    id -u "${SVC_USER}" >/dev/null 2>&1 && return 0
+    useradd --system --user-group --no-create-home --home-dir /nonexistent \
+            --shell /usr/sbin/nologin "${SVC_USER}"
+    echo "[*] Created system user ${SVC_USER}"
+}
+
+# The service must own its state; nobody else may read it (password hashes,
+# the session-signing key and the TLS private key are in there).
+own_state() {
+    chown -R "${SVC_USER}:" "${STATE_DIR}"
+    chmod -R go-rwx "${STATE_DIR}"
+}
+
+write_unit() {
+    mkdir -p "${UNIT_DIR}"
+    local out="${UNIT_DIR}/${SERVICE}.service"
+    sed -e "s|/opt/tc_lab|${INSTALL_DIR}|g" \
+        -e "s|/var/lib/tc_lab|${STATE_DIR}|g" \
+        -e "s|^User=tc-lab\$|User=${SVC_USER}|" \
+        -e "s|^Group=tc-lab\$|Group=$(id -gn "${SVC_USER}" 2>/dev/null || echo "${SVC_USER}")|" \
+        "${INSTALL_DIR}/tc_lab.service" > "$out"
+    case "${INSTALL_DIR}:${STATE_DIR}" in
+        /home/*|/root/*|*:/home/*|*:/root/*)
+            # ProtectHome=yes would hide the directory from its own service
+            sed -i 's/^ProtectHome=yes/ProtectHome=no/' "$out"
+            echo "[!] Install or state is under a home directory — ProtectHome disabled in the unit"
+            ;;
+    esac
+    echo "[*] Service file written to $out"
+}
+
 # ── Snapshots / rollback ───────────────────────────────────────────────────
-# A snapshot is the whole install directory minus venv and __pycache__ — code
-# AND state, so restoring one returns accounts, certificate, topology and saved
-# impairments to exactly what they were. venv is excluded because it is large
-# and rebuilt from the restored requirements.txt.
+# A snapshot is the install directory minus venv and __pycache__, plus the
+# state directory — code AND state, so restoring one returns accounts,
+# certificate, topology and saved impairments to exactly what they were. venv
+# is excluded because it is large and rebuilt from the restored requirements.txt.
+#
+# Layout: the code sits at the top of the archive (the layout every version
+# reads); the state directory is stored under SNAP_STATE. Snapshots taken
+# before v9.3 have no SNAP_STATE — their state is inside the code, where
+# those versions kept it.
+SNAP_STATE=".tc-lab-state"
 
 snap_list() {
     [ -d "${BACKUP_DIR}" ] || return 0
@@ -84,8 +140,13 @@ snap_create() {
     # Record the running version so --list-backups is readable.
     local ver
     ver=$(head -1 "${INSTALL_DIR}/app.py" 2>/dev/null | tr -cd 'v0-9.' || true)
-    tar czf "${BACKUP_DIR}/${name}" -C "${INSTALL_DIR}" \
-        --exclude=venv --exclude=__pycache__ . 2>/dev/null
+    local stage; stage=$(mktemp -d)
+    rsync -a --exclude=venv --exclude=__pycache__ "${INSTALL_DIR}/" "$stage/"
+    if [ -d "${STATE_DIR}" ]; then
+        rsync -a "${STATE_DIR}/" "$stage/${SNAP_STATE}/"
+    fi
+    tar czf "${BACKUP_DIR}/${name}" -C "$stage" . 2>/dev/null
+    rm -rf "$stage"
     chmod 600 "${BACKUP_DIR}/${name}"
     printf '%s\n' "${ver:-unknown}" > "${BACKUP_DIR}/${name}.version"
     echo "[*] Snapshot saved: ${BACKUP_DIR}/${name}  (version ${ver:-unknown})"
@@ -114,21 +175,36 @@ snap_restore() {
     tar xzf "$arch" -C "$stage" || { echo "error: snapshot is unreadable; nothing changed" >&2; exit 1; }
     [ -f "$stage/app.py" ] || { echo "error: snapshot has no app.py; nothing changed" >&2; exit 1; }
 
-    # Mirror the snapshot over the install, leaving venv alone.
-    rsync -a --delete --exclude=venv --exclude=__pycache__ "$stage/" "${INSTALL_DIR}/"
-    rm -rf "$stage"; trap - EXIT
-
+    # Mirror the code over the install, leaving venv alone. For a pre-v9.3
+    # snapshot this also brings back the state that lived inside the code.
+    rsync -a --delete --exclude=venv --exclude=__pycache__ --exclude="/${SNAP_STATE}" \
+        "$stage/" "${INSTALL_DIR}/"
     chown -R root:root "${INSTALL_DIR}"; chmod -R go-w "${INSTALL_DIR}"
     chmod +x "${INSTALL_DIR}/restore_network.sh" "${INSTALL_DIR}/restore_helper.py" \
              "${INSTALL_DIR}/tc-lab" "${INSTALL_DIR}/cli.py" 2>/dev/null || true
+
+    # The restored unit says which layout this snapshot is: v9.3+ runs as its
+    # own user with state in STATE_DIR; before that, as root with the state
+    # inside the code (already restored above).
+    if grep -q '^User=' "${INSTALL_DIR}/tc_lab.service" 2>/dev/null; then
+        if [ -d "$stage/${SNAP_STATE}" ]; then
+            ensure_service_user
+            mkdir -p "${STATE_DIR}"
+            rsync -a --delete "$stage/${SNAP_STATE}/" "${STATE_DIR}/"
+            own_state
+        fi
+    else
+        echo "[*] This snapshot predates v9.3: TC Lab runs as root again, with its"
+        echo "    state in ${INSTALL_DIR}. ${STATE_DIR} is not used by it."
+    fi
+    rm -rf "$stage"; trap - EXIT
 
     # Dependencies may differ between versions; the unit may too.
     if [ -x "${INSTALL_DIR}/venv/bin/pip" ]; then
         "${INSTALL_DIR}/venv/bin/pip" install --quiet -r "${INSTALL_DIR}/requirements.txt" || true
     fi
     if [ -f "${INSTALL_DIR}/tc_lab.service" ]; then
-        mkdir -p "${UNIT_DIR}"
-        sed "s|/opt/tc_lab|${INSTALL_DIR}|g" "${INSTALL_DIR}/tc_lab.service" > "${UNIT_DIR}/${SERVICE}.service"
+        write_unit
     fi
     systemctl daemon-reload
     systemctl start "${SERVICE}" || true
@@ -139,6 +215,52 @@ snap_restore() {
         echo "[!] Rolled back, but the service did not start. Check:"
         echo "      journalctl -u ${SERVICE} -n 50"
     fi
+}
+
+# ── Moving pre-v9.3 state out of the install directory ─────────────────────
+has_legacy_state() {
+    local f
+    for f in ${STATE_FILES}; do [ -e "${INSTALL_DIR}/${f}" ] && return 0; done
+    return 1
+}
+
+# Before v9.3 the service ran as root and kept its state inside the install
+# directory. Copy it to STATE_DIR, verify every file, then remove the originals
+# (a snapshot of both was taken first). Runs before the code is copied, so
+# user-created profiles are still there next to the shipped ones.
+migrate_legacy_state() {
+    has_legacy_state || return 0
+    echo "[*] Moving TC Lab's state from ${INSTALL_DIR} to ${STATE_DIR}"
+    if [ -d "${STATE_DIR}" ] && [ -n "$(ls -A "${STATE_DIR}" 2>/dev/null)" ]; then
+        # Only after rolling back to a pre-v9.3 snapshot and upgrading again:
+        # the files in the install directory are the ones that were in use.
+        local old="${STATE_DIR}.replaced-$(date +%Y%m%d-%H%M%S)"
+        mv "${STATE_DIR}" "$old"; chmod 700 "$old"
+        echo "[!] ${STATE_DIR} held older state; moved it to ${old}"
+        echo "    (not used any more — delete it once you are happy)"
+    fi
+    mkdir -p "${STATE_DIR}/profiles"; chmod 700 "${STATE_DIR}"
+
+    local moved=() f
+    for f in ${STATE_FILES}; do
+        [ -f "${INSTALL_DIR}/${f}" ] && moved+=("$f")
+    done
+    for f in "${INSTALL_DIR}"/users.json.*.bak "${INSTALL_DIR}"/*.log; do
+        [ -f "$f" ] && moved+=("$(basename "$f")")
+    done
+    for f in "${moved[@]}"; do
+        cp -p "${INSTALL_DIR}/${f}" "${STATE_DIR}/${f}"
+    done
+    for f in "${INSTALL_DIR}"/profiles/*.json; do
+        [ -f "$f" ] && cp -p "$f" "${STATE_DIR}/profiles/"
+    done
+    for f in "${moved[@]}"; do
+        cmp -s "${INSTALL_DIR}/${f}" "${STATE_DIR}/${f}" || {
+            echo "error: copy of ${f} did not verify; nothing removed from ${INSTALL_DIR}" >&2
+            exit 1; }
+    done
+    for f in "${moved[@]}"; do rm -f "${INSTALL_DIR}/${f}"; done
+    echo "[*] Moved ${#moved[@]} file(s) and the profiles to ${STATE_DIR}"
 }
 
 if [ "$ACTION" = "list" ]; then
@@ -164,7 +286,12 @@ if [ "$ACTION" = "rollback" ]; then
 fi
 
 
-USERS_FILE="${INSTALL_DIR}/users.json"
+USERS_FILE="${STATE_DIR}/users.json"
+# The store that is in use right now. A pre-v9.3 install keeps it in the
+# install directory; if one is there it is the current one (see
+# migrate_legacy_state), otherwise it is in STATE_DIR.
+CUR_USERS="${USERS_FILE}"
+[ -f "${INSTALL_DIR}/users.json" ] && CUR_USERS="${INSTALL_DIR}/users.json"
 IS_UPGRADE=0
 [ -f "${INSTALL_DIR}/app.py" ] && IS_UPGRADE=1
 
@@ -176,14 +303,14 @@ fi
 
 # ── 0. Decide what to do with existing accounts — asked up front, before any
 #       long-running step, so nothing blocks half way through the install ─────
-if [ -f "$USERS_FILE" ]; then
-    ACCOUNTS=$(grep -c '"hash"' "$USERS_FILE" 2>/dev/null || true)
+if [ -f "$CUR_USERS" ]; then
+    ACCOUNTS=$(grep -c '"hash"' "$CUR_USERS" 2>/dev/null || true)
     ACCOUNTS=${ACCOUNTS:-0}
     if [ "$USERS_MODE" = "ask" ]; then
         if [ -r /dev/tty ]; then
             echo ""
             echo "  Found an existing account store with ${ACCOUNTS} account(s):"
-            echo "    ${USERS_FILE}"
+            echo "    ${CUR_USERS}"
             echo ""
             echo "    [K] Keep them   — everyone signs in with their current password (default)"
             echo "    [R] Reset them  — delete all accounts; a fresh admin/tclab123 is created"
@@ -226,17 +353,18 @@ elif [ "$IS_UPGRADE" -eq 1 ]; then
     echo "[!] --no-backup: no snapshot taken, rollback will not be possible"
 fi
 
-# Runtime state is excluded so that running the app from a checkout (see the
-# "run it manually" option in docs/deployment.md) can never overwrite the
-# installed instance's accounts, certificate or saved topology.
+ensure_service_user
+migrate_legacy_state
+
+# Runtime state is excluded so that a checkout the app has been run from (see
+# the "run it manually" option in docs/deployment.md) never copies its own
+# accounts, certificate or topology into the install.
 #
 # --delete removes files that are no longer shipped (an upgrade used to leave
-# them behind forever). rsync protects --exclude'd paths on the receiver, so
-# every state file above survives; profiles/ is protected explicitly because it
-# holds user-created presets alongside the shipped ones and cannot be told apart.
+# them behind forever) — including user profiles from before v9.3, which
+# migrate_legacy_state has already copied to STATE_DIR.
 mkdir -p "${INSTALL_DIR}"
 rsync -a --delete \
-    --filter='protect profiles/***' \
     --exclude=venv --exclude=__pycache__ --exclude='*.pyc' \
     --exclude=.git --exclude=.pytest_cache --exclude=_preview.html \
     --exclude=users.json --exclude=users.json.bak --exclude=secret_key.txt \
@@ -246,12 +374,22 @@ rsync -a --delete \
     --exclude=config.json \
     "${SRC_DIR}/" "${INSTALL_DIR}/"
 
+mkdir -p "${STATE_DIR}/profiles"
+
+# Shipped profiles are added to the state directory when missing. One that is
+# already there is never overwritten, so edits survive upgrades (a deleted one
+# comes back, as it always has).
+for f in "${INSTALL_DIR}"/profiles/*.json; do
+    [ -f "$f" ] || continue
+    [ -e "${STATE_DIR}/profiles/$(basename "$f")" ] || cp "$f" "${STATE_DIR}/profiles/"
+done
+
 # config.json holds operator settings (bind_address, port, idle timeout), so it
 # is written only when absent — an upgrade must not reset it. Generated here
 # rather than copied, so the installer does not depend on a file that a
 # checkout may legitimately not have.
-if [ ! -f "${INSTALL_DIR}/config.json" ]; then
-    cat > "${INSTALL_DIR}/config.json" <<'JSON'
+if [ ! -f "${STATE_DIR}/config.json" ]; then
+    cat > "${STATE_DIR}/config.json" <<'JSON'
 {
   "idle_timeout_minutes": 30,
   "bind_address": "0.0.0.0",
@@ -269,9 +407,9 @@ fi
 "${INSTALL_DIR}/venv/bin/pip" install --quiet -r "${INSTALL_DIR}/requirements.txt"
 
 # ── 4. TLS certificate (kept if one already exists) ────────────────────────
-if [ ! -f "${INSTALL_DIR}/cert.pem" ]; then
+if [ ! -f "${STATE_DIR}/cert.pem" ]; then
     echo "[*] Generating self-signed TLS cert..."
-    (cd "${INSTALL_DIR}" && venv/bin/python ssl_gen.py)
+    (cd "${INSTALL_DIR}" && TC_LAB_STATE_DIR="${STATE_DIR}" venv/bin/python ssl_gen.py)
 else
     echo "[*] Keeping existing TLS certificate"
 fi
@@ -301,13 +439,15 @@ esac
 find "${INSTALL_DIR}" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
 
 # ── 6. Ownership ───────────────────────────────────────────────────────────
-# The unit has no User=, so the app runs as root. rsync -a (-rlptgoD) preserves
-# the checkout's owner when it runs as root, so a normal "git clone && sudo bash
-# setup.sh" would otherwise leave root-executed code owned and writable by the
-# unprivileged user who cloned it — a local privilege-escalation path. Take
-# ownership explicitly and drop group/other write.
+# Code: root's, and not writable by the service or anyone else. rsync -a
+# (-rlptgoD) preserves the checkout's owner when it runs as root, so a normal
+# "git clone && sudo bash setup.sh" would otherwise leave the service's code
+# owned and writable by the user who cloned it. Take ownership explicitly and
+# drop group/other write.
 chown -R root:root "${INSTALL_DIR}"
 chmod -R go-w "${INSTALL_DIR}"
+# State: the service's own, private to it.
+own_state
 
 # ── 7. Executable bits + CLI ───────────────────────────────────────────────
 chmod +x "${INSTALL_DIR}/restore_network.sh" "${INSTALL_DIR}/restore_helper.py"
@@ -320,17 +460,7 @@ echo "[*] CLI installed: sudo tc-lab reset-admin-password"
 # Installed from the tracked tc_lab.service so the sandboxing options and the
 # ExecStartPre topology restore stay in one place (an earlier version of this
 # script wrote a stripped-down unit inline and silently dropped both).
-mkdir -p "${UNIT_DIR}"
-SERVICE_FILE="${UNIT_DIR}/${SERVICE}.service"
-sed "s|/opt/tc_lab|${INSTALL_DIR}|g" "${INSTALL_DIR}/tc_lab.service" > "${SERVICE_FILE}"
-case "${INSTALL_DIR}" in
-    /home/*|/root/*)
-        # ProtectHome=yes would hide the install directory from its own service
-        sed -i 's/^ProtectHome=yes/ProtectHome=no/' "${SERVICE_FILE}"
-        echo "[!] Install is under a home directory — ProtectHome disabled in the unit"
-        ;;
-esac
-echo "[*] Service file written to ${SERVICE_FILE}"
+write_unit
 
 # ── 9. Enable and start ────────────────────────────────────────────────────
 systemctl daemon-reload
@@ -339,7 +469,7 @@ systemctl restart "${SERVICE}"
 sleep 2
 
 IP=$(hostname -I | awk '{print $1}')
-PORT=$(grep -oP '"port"\s*:\s*\K[0-9]+' "${INSTALL_DIR}/config.json" 2>/dev/null || echo 5000)
+PORT=$(grep -oP '"port"\s*:\s*\K[0-9]+' "${STATE_DIR}/config.json" 2>/dev/null || echo 5000)
 echo ""
 echo "============================================================"
 if systemctl is-active --quiet "${SERVICE}"; then
@@ -349,6 +479,7 @@ else
     echo "   journalctl -u ${SERVICE} -n 50"
 fi
 echo " Installed to:  ${INSTALL_DIR}"
+echo " State:         ${STATE_DIR}  (runs as user ${SVC_USER})"
 echo " Service:       systemctl status ${SERVICE}"
 echo " Open:          https://${IP}:${PORT}"
 if [ "$USERS_MODE" = "keep" ]; then
@@ -368,4 +499,4 @@ if [ "$IS_UPGRADE" -eq 1 ]; then
     echo ""
 fi
 echo "To trust the cert in Chrome: chrome://settings/certificates"
-echo "  Authorities -> Import ${INSTALL_DIR}/cert.pem -> Trust for HTTPS"
+echo "  Authorities -> Import ${STATE_DIR}/cert.pem -> Trust for HTTPS"

@@ -66,9 +66,9 @@ def create_bridge(name,stp=False):
     if rc!=0: return{"ok":False,"stderr":err}
     _run(["ip","link","set",name,"type","bridge","stp_state","1" if stp else "0"])
     rc2,_,err2=_run(["ip","link","set",name,"up"])
-    try:
-        with open("/proc/sys/net/ipv4/ip_forward","w") as f: f.write("1")
-    except: pass
+    # No net.ipv4.ip_forward=1 here (before v9.3 there was): a bridge forwards
+    # at layer 2 and does not need it, and turning it on made the whole host
+    # a router.
     return{"ok":rc2==0,"stderr":err2}
 def delete_bridge(name):
     for m in _get_members(name): _run(["ip","link","set",m,"nomaster"])
