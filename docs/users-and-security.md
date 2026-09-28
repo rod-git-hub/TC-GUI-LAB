@@ -269,7 +269,7 @@ administrator access on that host: through it, any interface can be changed.
    ```
    (or the equivalent `ufw`/`iptables` rule for your setup)
 4. **Install with `setup.sh`**, which deploys the sandboxed unit: TC Lab runs as its
-   own unprivileged user, `tc-lab`, with only `CAP_NET_ADMIN` and `CAP_NET_RAW`; the
+   own unprivileged user, `tc-lab`, with only `CAP_NET_ADMIN`; the
    whole system is read-only to it except `/var/lib/tc_lab`; its code is owned by
    root.
 5. **Give operators the `user` role**, not `admin`. Create their accounts from
@@ -294,7 +294,7 @@ Honest accounting of what this tool does *not* do.
 
 | Limitation | Impact | Mitigation |
 |---|---|---|
-| Holds network-admin rights on the host | a compromise could reconfigure any interface and see traffic — though not edit system files | own unprivileged user, 2 capabilities, read-only system except its state; isolated lab network |
+| Holds network-admin rights on the host | a compromise could reconfigure any interface, and so disrupt or redirect traffic — though not edit system files or capture packets | own unprivileged user, 1 capability, read-only system except its state; isolated lab network |
 | Werkzeug's built-in server | not built for hostile networks | fine for a single operator on a trusted LAN; put a reverse proxy in front for anything larger |
 | Self-signed certificate | encrypts, but proves no identity | import as trusted, or install a real certificate |
 | No audit trail of *who* did what | applied commands are logged, but not the username | account changes (create/delete/role/password-reset) *are* logged with the username; impairment changes are not |

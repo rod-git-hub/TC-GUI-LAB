@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 # An unprivileged system user, created by setup.sh. The service is handed the
-# two network capabilities it needs (below) instead of running as root.
+# one network capability it needs (below) instead of running as root.
 User=tc-lab
 Group=tc-lab
 # Code: /opt/tc_lab, owned by root and read-only to the service.
@@ -20,20 +20,21 @@ Restart=on-failure
 RestartSec=5
 
 # ── Capabilities ────────────────────────────────────────────────────────────
-# Ambient capabilities give a non-root process these two — and nothing else —
-# and pass them on to the ip/tc commands it runs. The bounding set makes sure
+# An ambient capability gives a non-root process this one — and nothing else —
+# and passes it on to the ip/tc commands it runs. The bounding set makes sure
 # nothing can ever add more.
 #
-#   CAP_NET_ADMIN   ip link / tc qdisc / bridge, VLANs
-#   CAP_NET_RAW     carried over from v9.2; whether netem needs it is being
-#                   verified — remove it here if every operation passes without
+#   CAP_NET_ADMIN   ip link / tc qdisc / bridges, VLANs — everything TC Lab does
+#
+# CAP_NET_RAW (raw and packet sockets) was held until v9.3, then removed: every
+# operation was validated on a live lab host without it.
 #
 # CAP_SYS_MODULE is deliberately NOT granted: it means loading arbitrary code
 # into the kernel. It is not needed — when `ip link add ... type vlan` or
 # `tc qdisc add ... htb` asks for a module that is not loaded, the KERNEL loads
 # it (rtnl-link-* / sch_* aliases), independently of the caller's capabilities.
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
 NoNewPrivileges=yes
 
 # ── Filesystem ──────────────────────────────────────────────────────────────

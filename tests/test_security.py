@@ -338,7 +338,7 @@ def test_export_bundle_shape_and_version(base):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# v9.3 service confinement: not root, two capabilities, one writable directory
+# v9.3 service confinement: not root, one capability, one writable directory
 # ─────────────────────────────────────────────────────────────────────────────
 def _unit():
     """tc_lab.service as {key: [values]} — keys can repeat."""
@@ -362,9 +362,7 @@ def test_unit_capabilities_are_exactly_the_bounded_set():
     """Ambient = bounding: the process gets these and can never gain more."""
     u = _unit()
     amb, bnd = set(u["AmbientCapabilities"][0].split()), set(u["CapabilityBoundingSet"][0].split())
-    assert amb == bnd
-    assert "CAP_NET_ADMIN" in amb
-    assert amb <= {"CAP_NET_ADMIN", "CAP_NET_RAW"}      # never SYS_MODULE, SYS_ADMIN, ...
+    assert amb == bnd == {"CAP_NET_ADMIN"}      # nothing else: not NET_RAW, SYS_MODULE, ...
 
 
 def test_unit_can_write_only_its_state_dir():
@@ -376,8 +374,8 @@ def test_unit_can_write_only_its_state_dir():
 
 
 @pytest.mark.parametrize("capeff,expected", [
-    ("0000000000003000", True),     # NET_ADMIN + NET_RAW — the systemd unit
-    ("0000000000001000", True),     # NET_ADMIN alone
+    ("0000000000003000", True),     # NET_ADMIN + NET_RAW — the v9.2 unit
+    ("0000000000001000", True),     # NET_ADMIN alone — the v9.3 unit
     ("000001ffffffffff", True),     # full root
     ("0000000000002000", False),    # NET_RAW alone
     ("0000000000000000", False),    # an ordinary user

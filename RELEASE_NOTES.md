@@ -12,7 +12,7 @@ For the itemised list see [CHANGELOG.md](CHANGELOG.md); for the upgrade itself,
 ### Highlights
 
 - **No longer runs as root.** The service runs as its own user, `tc-lab`, with only
-  the two network capabilities it needs, and can write only `/var/lib/tc_lab`.
+  the one network capability it needs, and can write only `/var/lib/tc_lab`.
 - **Change the port** from Settings, the installer, or the `tc-lab` command.
 - **Bridges show their total.** Set 50 ms on a bridge and each member gets 25 ms;
   set the members to 10 ms and 40 ms and the bridge shows 50 ms.
@@ -46,14 +46,15 @@ Undo it with `sudo bash setup.sh --rollback`.
 #### TC Lab no longer runs as root
 
 The service needs network-admin rights for `tc` and `ip` — not root. It now runs as
-the system user `tc-lab`, holding exactly `CAP_NET_ADMIN` and `CAP_NET_RAW`, and the
-whole system is read-only to it except its state directory.
+the system user `tc-lab`, holding exactly one capability, `CAP_NET_ADMIN`, and the
+whole system is read-only to it except its state directory. (`CAP_NET_RAW`, which
+v9.2 also held, turned out not to be needed and is gone.)
 
 | | v9.2 | v9.3 |
 |---|---|---|
-| Runs as | root, bounded to 2 capabilities | its own user, `tc-lab`, with the same 2 |
+| Runs as | root, bounded to 2 capabilities | its own user, `tc-lab`, with 1 — `CAP_NET_ADMIN` |
 | Can write | most of the system outside `/usr`, `/boot` and `/etc` — `/var` included | only `/var/lib/tc_lab` (and a private, throwaway `/tmp`) |
-| `systemd-analyze security` | 5.9 MEDIUM | 1.9 OK |
+| `systemd-analyze security` | 5.9 MEDIUM | 1.8 OK |
 
 Under v9.2, a compromised app could write root-owned files under `/var` that
 something unconfined later runs as full root. That is no longer possible; what is

@@ -26,7 +26,7 @@ interfaces. Built for Fortinet SD-WAN, SASE, and general network lab testing.
   **user** changes impairments
 - **User management in the dashboard** (admin-only) + `sudo tc-lab reset-admin-password` recovery
 - Runs as a sandboxed systemd service under its own unprivileged user, with only the
-  two network capabilities it needs
+  one network capability it needs
 
 ---
 
@@ -135,7 +135,7 @@ service, it runs like this:
 | | |
 |---|---|
 | **User** | its own system user, `tc-lab` — not root, no login shell |
-| **Capabilities** | `CAP_NET_ADMIN` and `CAP_NET_RAW` only — 2 of root's 40, and it can never gain more. No `CAP_SYS_ADMIN`, `CAP_SYS_PTRACE`, `CAP_DAC_OVERRIDE`, `CAP_SETUID` or the rest. |
+| **Capabilities** | `CAP_NET_ADMIN` only — 1 of root's 40, and it can never gain more. No `CAP_NET_RAW`, `CAP_SYS_ADMIN`, `CAP_SYS_PTRACE`, `CAP_DAC_OVERRIDE`, `CAP_SETUID` or the rest. |
 | **Filesystem** | `ProtectSystem=strict`: the whole system is read-only to it except its state directory, `/var/lib/tc_lab`, and a private, throwaway `/tmp`; `ProtectHome=yes`, `PrivateDevices` |
 | **Process** | `NoNewPrivileges`, `MemoryDenyWriteExecute`, `RestrictSUIDSGID`, `RestrictNamespaces`, a system-call filter, … |
 | **Code** | `/opt/tc_lab` is owned by root and not writable by the service or anyone else |
@@ -147,7 +147,7 @@ ps -o user= -p "$(systemctl show tc_lab -p MainPID --value)"
 grep CapEff /proc/$(systemctl show tc_lab -p MainPID --value)/status
 ```
 
-`tc-lab` and `0000000000003000` mean exactly that user and those two capabilities.
+`tc-lab` and `0000000000001000` mean exactly that user and that one capability.
 `systemd-analyze security tc_lab` scores the sandboxing. Kernel modules such as
 `8021q` and `sch_htb` are still loaded on demand — by the kernel, not by TC Lab.
 
@@ -163,8 +163,8 @@ release, for three reasons:
   the *host's* real interfaces, so a container would have to share the host's
   network (`--network host`). It gets no network isolation.
 - **Its one real benefit is already here.** Containers are safer mainly because
-  they drop root's capabilities. The systemd unit does that itself — down to the
-  same two a container would keep ([details](#-how-the-service-is-confined)).
+  they drop root's capabilities. The systemd unit does that itself — down to a
+  single one, and not as root ([details](#-how-the-service-is-confined)).
 - **Installing Docker changes the host networking TC Lab depends on.** Docker loads
   `br_netfilter`, which sends *bridged* frames through iptables, and sets the
   iptables `FORWARD` policy to `DROP`. On a machine whose job is bridging lab
@@ -249,7 +249,7 @@ described step by step, with screenshots, in the
 - Change the default password immediately
 - Bind to your management IP (`bind_address` in `/var/lib/tc_lab/config.json`) and
   firewall the dashboard port
-- The service runs as its own unprivileged user with 2 capabilities — see
+- The service runs as its own unprivileged user with 1 capability — see
   [How the service is confined](#-how-the-service-is-confined)
 
 See [SECURITY.md](SECURITY.md) for the security model and known limitations,

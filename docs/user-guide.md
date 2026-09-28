@@ -137,7 +137,7 @@ trip gets what you asked for:
 - **Latency and jitter are divided** between the members: a 50 ms target becomes
   25 ms on each, and the bridge shows 50 ms.
 - **Loss, duplication and corruption are compounded**, not halved: a 2% loss target
-  becomes 1.005% on each, which adds up to exactly 2% across both.
+  becomes about 1.005% on each, which compounds back to 2% across both.
 - **Rate is applied to each member unchanged**; the bridge shows the slower member's
   rate.
 

@@ -16,7 +16,7 @@ unavailable for a few seconds.
 Upgrade the same way ([step 2](#2-upgrade)). What is different afterwards:
 
 - **TC Lab no longer runs as root.** The service runs as its own system user,
-  `tc-lab`, with only the two network capabilities it needs, and can write only
+  `tc-lab`, with only the one network capability it needs, and can write only
   its state directory. See [SECURITY.md](../SECURITY.md).
 - **Its state moves** from `/opt/tc_lab` to **`/var/lib/tc_lab`**: accounts,
   `config.json`, certificate, saved impairments, topology, labels and profiles.
@@ -179,8 +179,8 @@ ps -o user= -p "$(systemctl show tc_lab -p MainPID --value)"
 grep CapEff /proc/$(systemctl show tc_lab -p MainPID --value)/status
 ```
 
-Expect `tc-lab`, and `CapEff: 0000000000003000` — exactly `CAP_NET_ADMIN` and
-`CAP_NET_RAW`.
+Expect `tc-lab`, and `CapEff: 0000000000001000` — exactly `CAP_NET_ADMIN`. (Under
+v9.2 it was `…3000`, which included `CAP_NET_RAW`.)
 
 Then open the UI and check the TC Emulation, Interfaces/VLANs and Bridge Manager
 sections show what they did before. A bridge card now shows the total of its

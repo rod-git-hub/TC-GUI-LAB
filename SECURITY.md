@@ -27,14 +27,14 @@ for internet-facing deployment** and by design manipulates the host's live netwo
 | Login | No brute-force protection, timing oracle, open redirect | `5/min` limit, constant-time compare, same-host redirects only (including browser URL-parsing quirks such as `/\evil`) |
 | Headers | None | `X-Frame-Options`, `nosniff`, `Referrer-Policy`, HSTS, CSP |
 | Error handling | 500 returned the exception string; import echoed exception text *(fixed in v9.2.1)* | Generic messages; detail in the log only |
-| Deployment | Unconfined systemd root (all 40 capabilities); install owned by the cloning user | Its own unprivileged user, `tc-lab`, holding only `CAP_NET_ADMIN` + `CAP_NET_RAW` *(v9.3)*; the whole filesystem read-only to it except `/var/lib/tc_lab` and a private, throwaway `/tmp` *(v9.3)*; code owned by root; sandboxed unit |
+| Deployment | Unconfined systemd root (all 40 capabilities); install owned by the cloning user | Its own unprivileged user, `tc-lab`, holding only `CAP_NET_ADMIN` *(v9.3)*; the whole filesystem read-only to it except `/var/lib/tc_lab` and a private, throwaway `/tmp` *(v9.3)*; code owned by root; sandboxed unit |
 | User management | Hand-edit `users.json` | Admin-only dashboard section; `tc-lab reset-admin-password` for recovery; the state directory, accounts included, is readable only by the service |
 
 ## Remaining limitations
 
 | Risk | Severity | Notes |
 |---|---|---|
-| Network-admin rights on the host | Medium | TC Lab's job is to change the host's interfaces, so the service holds `CAP_NET_ADMIN` (and `CAP_NET_RAW`) in the host's network. Since v9.3 it runs as its own unprivileged user and can write only `/var/lib/tc_lab`, so a compromise can no longer edit system files. It could still reconfigure any interface on the host — including the management one — and send or receive raw IP packets (packet-capture sockets are blocked by the unit). Getting full root would take a Linux kernel bug, and `CAP_NET_ADMIN` reaches more of the kernel than an ordinary process does. Keep it on an isolated lab network. |
+| Network-admin rights on the host | Medium | TC Lab's job is to change the host's interfaces, so the service holds `CAP_NET_ADMIN` in the host's network. Since v9.3 it runs as its own unprivileged user and can write only `/var/lib/tc_lab`, so a compromise can no longer edit system files. It could still reconfigure any interface on the host — including the management one — and so disrupt or redirect traffic. It cannot capture packets itself: raw and packet sockets need `CAP_NET_RAW`, which it no longer has. Getting full root would take a Linux kernel bug, and `CAP_NET_ADMIN` reaches more of the kernel than an ordinary process does. Keep it on an isolated lab network. |
 | Built-in WSGI server | Low–Med | Werkzeug's server (threaded). Fine for a single-operator lab on a trusted network; not for many concurrent users. |
 | Self-signed TLS | Low | Encrypts traffic; no identity verification. Import `/var/lib/tc_lab/cert.pem` as a trusted CA, or drop in your own cert/key. |
 | Single-process rate-limit / session store | Low | In-memory; counters reset on restart. Adequate for one instance. |

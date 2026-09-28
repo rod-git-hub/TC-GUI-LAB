@@ -7,8 +7,8 @@ installer does it. Upgrade notes: [docs/upgrading.md](docs/upgrading.md).
 
 ### Security
 - **The service runs as its own unprivileged user, `tc-lab`, not root.** It is
-  handed `CAP_NET_ADMIN` and `CAP_NET_RAW` as ambient capabilities (equal to the
-  bounding set, so it can never gain more) and `ProtectSystem=strict` makes the
+  handed `CAP_NET_ADMIN` alone as an ambient capability (equal to the bounding
+  set, so it can never gain more) and `ProtectSystem=strict` makes the
   whole filesystem read-only to it except `/var/lib/tc_lab`, its state directory.
   Under v9.2 it ran as UID 0 with `/var` writable, so a compromised app could
   write root-owned files there that something unconfined later runs as full root
@@ -17,7 +17,10 @@ installer does it. Upgrade notes: [docs/upgrading.md](docs/upgrading.md).
   `ProtectClock`, `ProtectHostname`, `ProtectProc=invisible`, `RestrictNamespaces`,
   `RestrictAddressFamilies`, `SystemCallFilter=@system-service`,
   `SystemCallArchitectures=native`, `RemoveIPC`, `UMask=0077`.
-  `systemd-analyze security`: 5.9 MEDIUM → 1.9 OK.
+  `systemd-analyze security`: 5.9 MEDIUM → 1.8 OK.
+- **`CAP_NET_RAW` removed.** Every operation TC Lab performs was run on a live lab
+  host without it; nothing needs it. The service can no longer open raw or packet
+  sockets.
 - **Creating a bridge no longer sets `net.ipv4.ip_forward=1`.** A bridge forwards
   at layer 2 and does not need it; it turned the whole host into a router.
 - **No `modprobe` calls.** The kernel loads `8021q` and the qdisc modules itself;

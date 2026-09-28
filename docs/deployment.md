@@ -112,7 +112,7 @@ host where the service is installed — see [See it run live](#see-it-run-live).
 | | A · systemd | B · manual |
 |---|---|---|
 | Survives reboot | yes | no |
-| Runs as | the `tc-lab` user, with only `CAP_NET_ADMIN` and `CAP_NET_RAW` | root, unconfined |
+| Runs as | the `tc-lab` user, with only `CAP_NET_ADMIN` | root, unconfined |
 | Can write | only `/var/lib/tc_lab` | anything root can |
 | Host prerequisites | apt packages (installed for you) | Python 3.9+, iproute2 |
 | Upgrade | re-run `setup.sh` (snapshot + rollback) | `git pull` |
@@ -315,8 +315,8 @@ ps -o user= -p "$(systemctl show tc_lab -p MainPID --value)"
 grep CapEff /proc/$(systemctl show tc_lab -p MainPID --value)/status
 ```
 
-Expect the user `tc-lab` and `CapEff: 0000000000003000` — exactly `CAP_NET_ADMIN`
-and `CAP_NET_RAW`. `systemd-analyze security tc_lab` rates the unit's sandboxing.
+Expect the user `tc-lab` and `CapEff: 0000000000001000` — exactly `CAP_NET_ADMIN`.
+`systemd-analyze security tc_lab` rates the unit's sandboxing.
 
 ---
 
