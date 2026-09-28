@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="csrf-token" content="{{ csrf_token() }}"/>
-<title>TC Lab v9.2.1</title>
+<title>TC Lab v{{ version }}</title>
 <style>
 /* ═══════════════════════════════════════════════════════════════════════
    TC Lab — design tokens
@@ -375,6 +375,37 @@ pre{font-family:var(--mono);font-size:.78rem;line-height:1.6;color:var(--text-2)
 #idle-bar .ic{color:var(--amber)}
 #idle-countdown{font-family:var(--mono);font-weight:700;color:var(--amber)}
 
+/* ── Help ─────────────────────────────────────────────────────────── */
+.nav-label-2{margin-top:14px}
+.help-nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.help-nav button{background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);
+  border-radius:999px;padding:6px 12px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit}
+.help-nav button:hover{color:var(--text);background:var(--surface-3)}
+.help-nav button.active{background:var(--brand-soft);color:var(--brand-ink);border-color:transparent}
+.help-doc{padding:22px 26px;line-height:1.6;font-size:.88rem;max-width:980px;overflow-wrap:anywhere}
+.help-doc h1{font-size:1.45rem;margin:0 0 14px;letter-spacing:-.3px}
+.help-doc h2{font-size:1.12rem;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.help-doc h3{font-size:.98rem;margin:20px 0 8px}
+.help-doc h4{font-size:.9rem;margin:16px 0 6px}
+.help-doc h1,.help-doc h2,.help-doc h3,.help-doc h4{scroll-margin-top:calc(var(--topbar-h) + 14px)}
+.help-doc p,.help-doc ul,.help-doc ol,.help-doc table,.help-doc pre,.help-doc blockquote{margin:0 0 12px}
+.help-doc ul,.help-doc ol{padding-left:22px}
+.help-doc li{margin:3px 0}
+.help-doc a{color:var(--accent-ink);text-decoration:none}
+.help-doc a:hover{text-decoration:underline}
+.help-doc code{font-family:var(--mono);font-size:.82em;background:var(--surface-3);padding:1px 5px;border-radius:4px}
+.help-doc pre{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);
+  padding:12px 14px;overflow-x:auto}
+.help-doc pre code{background:none;padding:0;font-size:.8rem}
+.help-doc table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}
+.help-doc th,.help-doc td{border:1px solid var(--border);padding:6px 10px;text-align:left;vertical-align:top}
+.help-doc th{background:var(--surface-2);font-weight:650}
+.help-doc img{max-width:100%;border:1px solid var(--border);border-radius:var(--r-md);margin:6px 0}
+.help-doc blockquote{border-left:3px solid var(--accent);padding:6px 12px;color:var(--text-2);
+  background:var(--accent-soft);border-radius:0 var(--r-sm) var(--r-sm) 0}
+.help-doc blockquote p:last-child{margin:0}
+.help-doc hr{border:none;border-top:1px solid var(--border);margin:24px 0}
+
 /* admin-only blocks stay hidden until whoami confirms the role
    (the server enforces this too — this only reduces clutter) */
 .admin-only{display:none}
@@ -439,6 +470,7 @@ body.is-admin .tab.admin-only{display:flex}
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
 <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
 <symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></symbol>
+<symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
 <symbol id="i-server" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
 <symbol id="i-key" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></symbol>
 </defs></svg>
@@ -447,7 +479,7 @@ body.is-admin .tab.admin-only{display:flex}
   <div class="brand">
     <span class="brand-mark"><svg viewBox="0 0 24 24"><use href="#i-zap"/></svg></span>
     <span class="brand-name">TC Lab</span>
-    <span class="brand-ver">v9.2.1</span>
+    <span class="brand-ver">v{{ version }}</span>
   </div>
   <div class="statusbar">
     <span class="badge" id="b-if">– ifaces</span>
@@ -477,6 +509,11 @@ body.is-admin .tab.admin-only{display:flex}
         <svg class="ic"><use href="#i-folder"/></svg><span>Profiles</span></div>
       <div class="tab admin-only" data-t="users" onclick="switchTab('users')">
         <svg class="ic"><use href="#i-users"/></svg><span>Users</span></div>
+    </div>
+    <div class="nav-label nav-label-2">Reference</div>
+    <div class="tabs">
+      <div class="tab" data-t="help" onclick="switchTab('help')">
+        <svg class="ic"><use href="#i-help"/></svg><span>Help</span></div>
     </div>
     <div class="sidebar-foot">
       <div class="user-chip">
@@ -703,6 +740,18 @@ body.is-admin .tab.admin-only{display:flex}
         <pre class="code-block">sudo tc-lab reset-admin-password</pre>
       </div>
     </div>
+    <!-- ── Help ─────────────────────────────────────────────────────── -->
+    <div id="tab-help" class="panel">
+      <div class="page-hdr">
+        <div>
+          <h2 class="page-title">Help</h2>
+          <p class="page-sub">The same documentation as the project's GitHub page, for the
+            version running here — and readable without internet access.</p>
+        </div>
+      </div>
+      <div class="help-nav" id="help-nav"></div>
+      <article class="card help-doc" id="help-doc"></article>
+    </div>
   </main>
 </div>
 
@@ -908,6 +957,7 @@ function switchTab(name){
   if(name==='profiles') renderProfiles();
   if(name==='vlans') loadVlanTab();
   if(name==='users') loadUsers();
+  if(name==='help') openHelp();
 }
 
 async function reloadBridges(evt){
@@ -1632,6 +1682,53 @@ async function doRefresh(btn){
 }
 
 loadRole();
+// ── Help ──────────────────────────────────────────────────────────────────
+// Pages are rendered by the server from the Markdown shipped with this install.
+let helpIndex=null,helpPage=null;
+async function openHelp(page,anchor){
+  if(!helpIndex){const d=await api('/api/help');if(!d||!d.pages)return;helpIndex=d;}
+  page=page||helpPage||'guide';
+  const doc=document.getElementById('help-doc');
+  if(page!==helpPage){
+    helpPage=page;renderHelpNav();
+    if(page==='about') doc.innerHTML=aboutHtml();
+    else{
+      doc.innerHTML='<p class="muted">Loading…</p>';
+      const r=await api(`/api/help/${encodeURIComponent(page)}`);
+      doc.innerHTML=r&&r.ok?r.html
+        :`<p class="muted">${esc((r&&r.error)||'This page could not be loaded.')}</p>`;
+    }
+  }
+  // Scroll the page itself (scrollIntoView would also scroll any frame it sits in).
+  const target=anchor&&document.getElementById('h-'+anchor);
+  window.scrollTo({top:target?target.getBoundingClientRect().top+window.scrollY-70:0});}
+function renderHelpNav(){
+  const pages=[...helpIndex.pages,{id:'about',title:'About'}];
+  document.getElementById('help-nav').innerHTML=pages.map(p=>
+    `<button class="${p.id===helpPage?'active':''}" onclick="openHelp('${p.id}')">${esc(p.title)}</button>`).join('');}
+function aboutHtml(){
+  const v=esc(helpIndex.version),u=esc(helpIndex.project_url);
+  const out=(href,text)=>`<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  return `<h1>About TC Lab</h1>
+  <p>TC Lab puts real Linux <code>tc</code>/<code>netem</code> impairments — latency, jitter,
+    loss, duplication, corruption and rate limits — behind a web dashboard, for testing
+    SD-WAN and other network equipment in a lab.</p>
+  <table>
+    <tr><th>Version</th><td><b>v${v}</b></td></tr>
+    <tr><th>Project</th><td>${out(u,u)}</td></tr>
+    <tr><th>This release</th><td>${out(`${u}/releases/tag/v${v}`,'Release page on GitHub')}
+      · <a href="#" data-help="whatsnew">What's new</a></td></tr>
+    <tr><th>Newer versions</th><td>${out(`${u}/releases`,'All releases')} — to install one, see
+      <a href="#" data-help="upgrade">Upgrading</a></td></tr>
+    <tr><th>Security issues</th><td>Please report them privately — see the
+      <a href="#" data-help="security" data-anchor="reporting-a-vulnerability">Security policy</a></td></tr>
+    <tr><th>License</th><td>MIT — ${out(`${u}/blob/v${v}/LICENSE`,'LICENSE')}</td></tr>
+  </table>
+  <p class="muted">Links to GitHub need internet access; everything else in Help comes from this host.</p>`;}
+document.getElementById('help-doc').addEventListener('click',e=>{
+  const a=e.target.closest('a[data-help]');if(!a)return;
+  e.preventDefault();openHelp(a.dataset.help,a.dataset.anchor);});
+
 loadAll();
 loadConfig();
 setInterval(loadAll,20000);

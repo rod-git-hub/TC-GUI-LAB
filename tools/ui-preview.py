@@ -14,6 +14,9 @@ import json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tc_manager import combine_member_configs      # the server's own arithmetic
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+with open(os.path.join(REPO, "app.py")) as f:
+    VERSION = f.readline().strip().strip('"').split()[-1].lstrip("v")
 
 ROLE = sys.argv[1] if len(sys.argv) > 1 else "admin"
 
@@ -71,6 +74,19 @@ DATA = {
                                        " backlog 0b 0p requeues 0"},
 }
 
+# Help pages, rendered by the server's own code. Images are served from the
+# repository by the preview's HTTP server, so point them at docs/img directly.
+try:
+    import help_docs
+    DATA["/api/help"] = {"version": VERSION, "project_url": help_docs.PROJECT_URL,
+                         "pages": [{"id": p, "title": t} for p, t, _ in help_docs.PAGES]}
+    for pid, title, _ in help_docs.PAGES:
+        html = help_docs.render(pid, VERSION)[1].replace('src="/help/img/', 'src="docs/img/')
+        DATA[f"/api/help/{pid}"] = {"ok": True, "id": pid, "title": title, "html": html}
+except ImportError:
+    print("note: Markdown is not installed here, so Help is empty in the preview "
+          "(pip install -r requirements.txt)")
+
 STUB = """
 /* ---- preview fixture: no backend required ---- */
 window.fetch=function(u){
@@ -80,7 +96,8 @@ window.fetch=function(u){
 };
 """.replace("__DATA__", json.dumps(DATA))
 
-html = open(SRC).read().replace("{{ csrf_token() }}", "PREVIEW-TOKEN")
+html = (open(SRC).read().replace("{{ csrf_token() }}", "PREVIEW-TOKEN")
+        .replace("{{ version }}", VERSION))
 assert "<script>" in html
 html = html.replace("<script>", "<script>" + STUB, 1)
 open(DST, "w").write(html)

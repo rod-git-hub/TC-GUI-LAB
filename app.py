@@ -2,7 +2,7 @@
 import os, sys, json, logging, subprocess, threading
 from datetime import timedelta
 from pathlib import Path
-from flask import Flask, request, jsonify, render_template, abort
+from flask import Flask, request, jsonify, render_template, abort, send_from_directory
 from flask_login import login_required, current_user
 from flask_wtf import CSRFProtect
 from werkzeug.exceptions import HTTPException
@@ -14,12 +14,18 @@ from tc_manager     import (apply_netem, remove_qdisc, get_qdisc_stats,
                              list_interfaces, detect_all_tc_configs, split_config_for_members,
                              combine_member_configs)
 from ports          import DEFAULT_PORT, parse_port, port_available
+import help_docs
 from bridge_manager import (create_bridge, delete_bridge, add_member, remove_member,
                              set_bridge_up, get_bridge_stats, get_all_bridges,
                              get_all_link_info, list_unbridged_interfaces,
                              is_foreign_bridge)
 from vlan_manager   import (list_vlan_interfaces, list_physical_interfaces,
                              create_vlan, delete_vlan, set_iface_up, get_iface_stats)
+
+# The one place the version is written: the docstring above ("app.py vX.Y").
+# The page, the export and Help → About read it from here; `tc-lab --version`
+# reads the same line from the file.
+VERSION = (__doc__ or "").split()[-1].lstrip("v")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -355,7 +361,7 @@ def _sanitize_bundle(bundle):
 # ── UI ─────────────────────────────────────────────────────────────────────────
 @app.route("/")
 @login_required
-def index(): return render_template("index.html")
+def index(): return render_template("index.html", version=VERSION)
 
 # ── Discovery ──────────────────────────────────────────────────────────────────
 @app.route("/api/interfaces")
@@ -703,7 +709,7 @@ def api_export():
         try: profiles[f.stem] = json.loads(f.read_text())
         except: pass
     bundle = {
-        "version":  "9.2.1",
+        "version":  VERSION,
         "exported": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "network":  _load_json(NET_CONFIG_FILE),
         "tc_state": _load_json(STATE_FILE),
@@ -777,6 +783,34 @@ def api_import():
         _reapply_tc(_state, bridge_names)
 
     return jsonify({"ok": True, "version": ver, "imported": imported})
+
+# ── Help ───────────────────────────────────────────────────────────────────────
+# The documentation that ships with this install, rendered by help_docs. Every
+# signed-in user may read it; the page is named from a fixed list, never a path.
+@app.route("/api/help")
+@login_required
+def api_help_index():
+    return jsonify({"version": VERSION, "project_url": help_docs.PROJECT_URL,
+                    "pages": [{"id": p, "title": t} for p, t, _ in help_docs.PAGES]})
+
+@app.route("/api/help/<page>")
+@login_required
+def api_help_page(page):
+    try:
+        title, html = help_docs.render(page, VERSION)
+    except KeyError:
+        return jsonify({"ok": False, "error": "No such help page"}), 404
+    except OSError as e:
+        logger.warning("Help page %s: %s", page, e)
+        return jsonify({"ok": False, "error": "This page is not installed"}), 404
+    return jsonify({"ok": True, "id": page, "title": title, "html": html})
+
+@app.route("/help/img/<name>")
+@login_required
+def help_image(name):
+    if not help_docs.IMG_NAME.match(name):
+        abort(404)
+    return send_from_directory(help_docs.IMG_DIR, name, max_age=3600)
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 CAP_NET_ADMIN = 12
