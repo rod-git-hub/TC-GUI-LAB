@@ -392,3 +392,129 @@ def test_startup_capability_check(capeff, expected):
 
 def test_startup_capability_check_without_capeff_line():
     assert app._has_net_admin("Name:\tpython\n") is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v9.3 service port: rules, Settings → Service port, restart in place
+# ─────────────────────────────────────────────────────────────────────────────
+ports = importlib.import_module("ports")
+
+
+@pytest.mark.parametrize("good,expected", [
+    (1024, 1024), (5000, 5000), (65535, 65535), ("8443", 8443), (" 8443 ", 8443),
+    ("08443", 8443),
+])
+def test_parse_port_accepts(good, expected):
+    assert ports.parse_port(good) == expected
+
+
+@pytest.mark.parametrize("bad", [
+    1023, 443, 80, 0, -1, 65536, 99999, "", "abc", "84 43", "8443.0", 8443.0,
+    None, True, [8443], "٨٤٤٣",     # Arabic-Indic digits
+])
+def test_parse_port_rejects(bad):
+    with pytest.raises(ValueError):
+        ports.parse_port(bad)
+
+
+def test_port_available_sees_a_listener():
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0)); s.listen()
+        busy = s.getsockname()[1]
+        assert ports.port_available("127.0.0.1", busy) is False
+    assert ports.port_available("127.0.0.1", busy) is True
+
+
+@pytest.fixture
+def portcfg(base, monkeypatch):
+    """A known config, the port reported free, and restarts recorded not run."""
+    monkeypatch.setattr(app, "_config", dict(app.DEFAULT_CONFIG))
+    if app.CONFIG_FILE.exists():
+        app.CONFIG_FILE.unlink()
+    monkeypatch.setattr(app, "port_available", lambda host, port: True)
+    restarts = []
+    monkeypatch.setattr(app, "_schedule_restart", lambda *a: restarts.append(a))
+    return restarts
+
+
+def test_admin_changes_port_and_service_restarts(portcfg):
+    r = _client("admin").post("/api/config", json={"port": 8443})
+    assert r.status_code == 200
+    assert r.get_json() == {"ok": True, "port": 8443, "restarting": True}
+    assert json.loads(app.CONFIG_FILE.read_text())["port"] == 8443
+    assert json.loads(app.CONFIG_FILE.read_text())["idle_timeout_minutes"] == 30   # kept
+    assert len(portcfg) == 1
+
+
+def test_user_cannot_change_port(portcfg):
+    r = _client("bob").post("/api/config", json={"port": 8443})
+    assert r.status_code == 403
+    assert not app.CONFIG_FILE.exists() and portcfg == []
+
+
+@pytest.mark.parametrize("bad", [80, 443, 70000, "abc", None])
+def test_invalid_port_rejected_and_nothing_restarts(portcfg, bad):
+    r = _client("admin").post("/api/config", json={"port": bad})
+    assert r.status_code == 400 and "port" in r.get_json()["error"].lower()
+    assert not app.CONFIG_FILE.exists() and portcfg == []
+
+
+def test_port_in_use_rejected(portcfg, monkeypatch):
+    monkeypatch.setattr(app, "port_available", lambda host, port: False)
+    r = _client("admin").post("/api/config", json={"port": 8443})
+    assert r.status_code == 400 and "in use" in r.get_json()["error"]
+    assert not app.CONFIG_FILE.exists() and portcfg == []
+
+
+def test_same_port_is_a_no_op(portcfg):
+    r = _client("admin").post("/api/config", json={"port": 5000})
+    assert r.get_json() == {"ok": True, "port": 5000, "restarting": False}
+    assert portcfg == []
+
+
+def test_restart_in_place_reexecs_the_same_program(monkeypatch):
+    calls, closed = [], []
+    monkeypatch.setattr(app.os, "execve", lambda *a: calls.append(a))
+    monkeypatch.setattr(app.os, "closerange", lambda lo, hi: closed.append((lo, hi)))
+    monkeypatch.setenv("WERKZEUG_SERVER_FD", "7")
+    app._restart_in_place()
+    exe, argv, env = calls[0]
+    assert exe == app.sys.executable and argv[0] == exe
+    assert env["TC_LAB_RESTARTED"] == "1"
+    # The old listening socket must not survive into the new process.
+    assert "WERKZEUG_SERVER_FD" not in env
+    assert closed and closed[0][0] == 3                    # everything but stdio
+
+
+@pytest.mark.parametrize("restarted", [True, False])
+def test_restart_in_place_leaves_the_kernel_alone(base, monkeypatch, restarted):
+    """After a port change the bridges, VLANs and qdiscs are untouched, so
+    _init must not rebuild them — that would interrupt the impairments."""
+    touched = []
+    monkeypatch.delenv("TC_LAB_SKIP_RESTORE", raising=False)
+    monkeypatch.setattr(app, "restore_via_script", lambda: touched.append("restore"))
+    monkeypatch.setattr(app, "_reapply_tc", lambda *a: touched.append("reapply"))
+    monkeypatch.setattr(app, "get_all_bridges", lambda: {})
+    monkeypatch.setattr(app, "list_interfaces", lambda: [])
+    if restarted:
+        monkeypatch.setenv("TC_LAB_RESTARTED", "1")
+    app._init()
+    assert touched == ([] if restarted else ["restore", "reapply"])
+    assert "TC_LAB_RESTARTED" not in os.environ          # consumed, not inherited
+
+
+@pytest.mark.parametrize("cfg,expected", [
+    ({"port": 8443}, 8443), ({"port": 443}, 5000), ({"port": "junk"}, 5000), ({}, 5000),
+])
+def test_listen_port_falls_back_to_default(cfg, expected):
+    assert app._listen_port(cfg) == expected
+
+
+def test_installer_port_range_matches_ports_py():
+    """setup.sh --port cannot import ports.py (it runs before the venv exists),
+    so it keeps its own copy of the range. Keep them identical."""
+    import re
+    src = open(os.path.join(_REPO, "setup.sh")).read()
+    assert int(re.search(r"^PORT_MIN=(\d+)$", src, re.M).group(1)) == ports.PORT_MIN
+    assert int(re.search(r"^PORT_MAX=(\d+)$", src, re.M).group(1)) == ports.PORT_MAX

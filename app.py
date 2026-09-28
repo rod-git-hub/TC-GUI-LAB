@@ -1,5 +1,5 @@
 """app.py v9.2.1"""
-import os, json, logging, subprocess
+import os, sys, json, logging, subprocess, threading
 from datetime import timedelta
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, abort
@@ -12,6 +12,7 @@ from auth           import (auth_bp, login_manager, limiter, get_or_create_secre
                             set_role, VALID_ROLES)
 from tc_manager     import (apply_netem, remove_qdisc, get_qdisc_stats,
                              list_interfaces, detect_all_tc_configs, split_config_for_members)
+from ports          import DEFAULT_PORT, parse_port, port_available
 from bridge_manager import (create_bridge, delete_bridge, add_member, remove_member,
                              set_bridge_up, get_bridge_stats, get_all_bridges,
                              get_all_link_info, list_unbridged_interfaces,
@@ -69,7 +70,7 @@ NET_CONFIG_FILE = STATE_DIR / "network_config.json"   # ← persistence for brid
 PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 
 VALID          = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
-DEFAULT_CONFIG = {"idle_timeout_minutes": 30, "bind_address": "0.0.0.0", "port": 5000}
+DEFAULT_CONFIG = {"idle_timeout_minutes": 30, "bind_address": "0.0.0.0", "port": DEFAULT_PORT}
 
 # ── Error handler ──────────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
@@ -196,14 +197,19 @@ def _init():
         logger.warning("TC_LAB_SKIP_RESTORE set — skipping topology restore, "
                        "tc re-apply and live-scan")
         return
-    # 1. Restore VLANs + bridges + members via shell script (reliable ordering)
-    restore_via_script()
-    # 2. Load saved tc state
     saved = _load_json(STATE_FILE)
-    # 3. Re-apply saved tc rules to the kernel
-    bridge_names = set(get_all_bridges().keys())
-    _reapply_tc(saved, bridge_names)
-    # 4. Scan live rules
+    if os.environ.pop("TC_LAB_RESTARTED", None):
+        # Restarted in place to move to a new port (_restart_in_place): the
+        # kernel's bridges, VLANs and qdiscs were never touched, so rebuilding
+        # them would only interrupt the impairments for nothing.
+        logger.info("Restarted in place — topology and tc left as they are")
+    else:
+        # 1. Restore VLANs + bridges + members via shell script (reliable ordering)
+        restore_via_script()
+        # 2. Re-apply saved tc rules to the kernel
+        bridge_names = set(get_all_bridges().keys())
+        _reapply_tc(saved, bridge_names)
+    # 3. Scan live rules
     live   = detect_all_tc_configs(list_interfaces())
     _state = {**saved, **live}
     _save_json(STATE_FILE, _state)
@@ -418,6 +424,8 @@ def api_get_config(): return jsonify(_config)
 def api_set_config():
     global _config
     data = request.get_json(silent=True) or {}
+    if "port" in data:
+        return _set_port(data["port"])
     if "idle_timeout_minutes" in data:
         try:
             v = int(data["idle_timeout_minutes"])
@@ -426,6 +434,53 @@ def api_set_config():
         except: return jsonify({"ok": False, "error": "Invalid value"}), 400
     _save_json(CONFIG_FILE, _config)
     return jsonify({"ok": True, "config": _config})
+
+# ── Service port ───────────────────────────────────────────────────────────────
+# Changing the port means listening somewhere else, which a running server
+# cannot do — so TC Lab saves the new port and replaces itself with a fresh
+# copy of the same program (execve), which starts on it. The process, its two
+# capabilities and the systemd service all carry on; bridges, VLANs and
+# impairments in the kernel are not touched (see TC_LAB_RESTARTED in _init).
+RESTART_DELAY_S = 1.0          # long enough for the JSON reply to reach the browser
+
+def _set_port(value):
+    try:
+        port = parse_port(value)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    current = _config.get("port", DEFAULT_PORT)
+    if port == current:
+        return jsonify({"ok": True, "port": port, "restarting": False})
+    if not port_available(_config.get("bind_address", "0.0.0.0"), port):
+        return jsonify({"ok": False,
+                        "error": f"Port {port} is already in use on this host"}), 400
+    new = {**_config, "port": port}
+    try:
+        CONFIG_FILE.write_text(json.dumps(new, indent=2))
+    except OSError as e:
+        logger.error("Port change: cannot write %s: %s", CONFIG_FILE, e)
+        return jsonify({"ok": False, "error": "Could not save the setting"}), 500
+    _config.update(new)
+    logger.warning("Service port changed %s -> %s by %s; restarting",
+                   current, port, current_user.id)
+    _schedule_restart()
+    return jsonify({"ok": True, "port": port, "restarting": True})
+
+def _schedule_restart(delay=RESTART_DELAY_S):
+    t = threading.Timer(delay, _restart_in_place)
+    t.daemon = True
+    t.start()
+
+def _restart_in_place():
+    sys.stdout.flush(); sys.stderr.flush()
+    # Werkzeug marks its listening socket inheritable (and names it in
+    # WERKZEUG_SERVER_FD) for its reloader, so without this the new process
+    # would inherit the OLD port: never served again, but still bound — and
+    # "moving back" to it would then fail as in use. Keep only stdin/out/err.
+    env = {k: v for k, v in os.environ.items() if k != "WERKZEUG_SERVER_FD"}
+    env["TC_LAB_RESTARTED"] = "1"
+    os.closerange(3, os.sysconf("SC_OPEN_MAX"))
+    os.execve(sys.executable, [sys.executable] + sys.argv, env)
 
 # ── User management (admin only) ───────────────────────────────────────────────
 # Every route here is @admin_required, so a "user" role gets 403 regardless of
@@ -692,6 +747,17 @@ def api_import():
 # ── Entry point ────────────────────────────────────────────────────────────────
 CAP_NET_ADMIN = 12
 
+def _listen_port(config):
+    """The configured port, or the default when it is unusable — e.g. 443 from a
+    pre-v9.3 install, which the non-root service cannot listen on."""
+    try:
+        return parse_port(config.get("port", DEFAULT_PORT))
+    except ValueError as e:
+        logger.warning("config.json port %r: %s -- using %d instead. "
+                       "Set another with: sudo tc-lab set-port <port>",
+                       config.get("port"), e, DEFAULT_PORT)
+        return DEFAULT_PORT
+
 def _has_net_admin(status_text):
     """True if a /proc/<pid>/status text shows CAP_NET_ADMIN in the effective
     set. Under systemd the service is not root — it holds this capability
@@ -717,8 +783,7 @@ if __name__ == "__main__":
     from ssl_gen import ensure_cert
     cert, key = ensure_cert()
     bind = _config.get("bind_address", "0.0.0.0")
-    try:    port = int(_config.get("port", 5000))
-    except (TypeError, ValueError): port = 5000
+    port = _listen_port(_config)
     print(f"[TLS] HTTPS on https://{bind}:{port}")
     print("[TLS] To skip Chrome warning: chrome://settings/certificates")
     print("      Authorities -> Import cert.pem -> Trust for HTTPS")

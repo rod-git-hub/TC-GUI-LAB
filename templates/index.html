@@ -439,6 +439,7 @@ body.is-admin .tab.admin-only{display:flex}
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
 <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
 <symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></symbol>
+<symbol id="i-server" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
 <symbol id="i-key" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></symbol>
 </defs></svg>
 
@@ -790,6 +791,23 @@ body.is-admin .tab.admin-only{display:flex}
         <div id="timeout-status" class="sb info"></div>
       </div>
 
+      <div class="msec" id="port-section" style="display:none">
+        <div class="msec-title"><svg class="ic"><use href="#i-server"/></svg>Service Port</div>
+        <p class="card-note" style="margin-bottom:12px">
+          The port the dashboard listens on (1024–65535). Changing it restarts TC Lab
+          — impairments keep running — and moves this page to the new address.
+          If a firewall only allows the current port you will lose access; on the host,
+          <b>sudo tc-lab set-port</b> puts it back.
+        </p>
+        <div class="field-row">
+          <div style="flex:1;min-width:150px"><label for="port-val">Port</label>
+            <input type="number" id="port-val" min="1024" max="65535"/></div>
+          <button class="bG" onclick="doSavePort()">
+            <svg class="ic"><use href="#i-save"/></svg>Change port</button>
+        </div>
+        <div id="port-status" class="sb info"></div>
+      </div>
+
       <div class="msec">
         <div class="theme-row">
           <div class="msec-title" style="margin:0"><svg class="ic"><use href="#i-sun"/></svg>Appearance</div>
@@ -850,12 +868,18 @@ setInterval(()=>{
   }
 },4000);
 
+let svcPort=null;
 async function loadConfig(){
   const r=await api('/api/config');
   if(r&&r.idle_timeout_minutes!==undefined){
     idleTimeout=r.idle_timeout_minutes;
     const el=document.getElementById('timeout-val');
     if(el) el.value=idleTimeout;
+  }
+  if(r&&r.port!==undefined){
+    svcPort=r.port;
+    const el=document.getElementById('port-val');
+    if(el) el.value=svcPort;
   }
 }
 
@@ -1350,9 +1374,11 @@ async function openSettings(){
   document.getElementById('set-avatar').textContent=(r.username||'?').charAt(0).toUpperCase();
   ['pw-cur','pw-new','pw-cfm'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   sb('pw-status','','info');
-  // Show timeout section only for admin
+  // Timeout and port sections: admin only (the server enforces it too)
   if(r.role==='admin'){
     document.getElementById('timeout-section').style.display='block';
+    document.getElementById('port-section').style.display='block';
+    sb('port-status','','info');
     await loadConfig();
   }
   document.getElementById('set-modal').classList.add('show');}
@@ -1373,6 +1399,32 @@ async function doSaveTimeout(){
   const r=await api('/api/config','POST',{idle_timeout_minutes:v});
   if(r.ok){idleTimeout=v;sb('timeout-status',`✔ Timeout set to ${v===0?'disabled':v+'min'}`,'ok');}
   else sb('timeout-status','✘ '+(r.error||r.stderr||'Error'),'err');}
+
+const pause=ms=>new Promise(res=>setTimeout(res,ms));
+async function doSavePort(){
+  const v=parseInt(document.getElementById('port-val').value,10);
+  if(!(v>=1024&&v<=65535)){sb('port-status','Enter a port from 1024 to 65535','err');return;}
+  if(v===svcPort){sb('port-status',`Already on port ${v}`,'info');return;}
+  const u=new URL(location.href);u.port=String(v);u.pathname='/';u.search='';u.hash='';
+  if(!confirm(`Move TC Lab to port ${v}?\n\n`
+    +`It restarts (a few seconds; impairments keep running) and this page moves to:\n${u.href}\n\n`
+    +`If a firewall only allows port ${svcPort}, you will lose access. To undo it, on the host:\n`
+    +`  sudo tc-lab set-port ${svcPort}\n  sudo systemctl restart tc_lab`))return;
+  sb('port-status','Saving…','info');
+  const r=await api('/api/config','POST',{port:v});
+  if(!r.ok){sb('port-status','✘ '+(r.error||r.stderr||'Error'),'err');return;}
+  if(!r.restarting){svcPort=v;sb('port-status',`✔ Port ${v}`,'ok');return;}
+  sb('port-status',`Restarting on port ${v} — this page will move to ${u.href}`,'info');
+  // The page's security policy only lets it talk to its own address, so it
+  // cannot ask the new one whether it is up. Wait for this address to go
+  // quiet (TC Lab has restarted), give the new one a moment, then follow.
+  const t0=Date.now();
+  while(Date.now()-t0<15000){
+    await pause(500);
+    try{await fetch('/favicon.ico',{cache:'no-store'});}catch(e){break;}
+  }
+  await pause(5000);
+  location.href=u.href;}
 
 // ── Init ──────────────────────────────────────────────────────────────────
 async function loadAll(){

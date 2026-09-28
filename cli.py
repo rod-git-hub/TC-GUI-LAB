@@ -8,6 +8,7 @@ password, because passwords are stored only as one-way bcrypt hashes.
 
     sudo tc-lab reset-admin-password
     sudo tc-lab list-users
+    sudo tc-lab set-port 5000
     tc-lab --help
     tc-lab --version
 
@@ -27,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.resolve()))
 try:
     import auth
+    import ports
 except ImportError as e:                                    # pragma: no cover
     sys.exit(f"error: cannot import the application (auth.py): {e}\n"
              "Run this from the TC Lab install directory, e.g.\n"
@@ -181,6 +183,40 @@ def cmd_list_users(args):
     return EXIT_OK
 
 
+def cmd_set_port(args):
+    """Recovery for a dashboard that cannot be reached on its current port —
+    for example after moving it to a port a firewall blocks. Writes config.json
+    only; the service picks it up when restarted."""
+    require_root()
+    try:
+        port = ports.parse_port(args.port)
+    except ValueError as e:
+        _err(str(e))
+        return EXIT_ERR
+    cfg_file = auth._SD / "config.json"
+    try:
+        cfg = json.loads(cfg_file.read_text()) if cfg_file.exists() else {}
+        if not isinstance(cfg, dict):
+            raise ValueError("not a JSON object")
+    except (OSError, ValueError) as e:
+        _err(f"cannot read {cfg_file} ({e}) — fix or remove it, then retry")
+        return EXIT_ERR
+    old = cfg.get("port", ports.DEFAULT_PORT)
+    cfg["port"] = port
+    try:
+        cfg_file.write_text(json.dumps(cfg, indent=2))
+        _give_to_service(cfg_file)
+    except OSError as e:
+        _err(f"could not write {cfg_file}: {e}")
+        return EXIT_ERR
+    print(f"Port set to {port} (was {old}) in {cfg_file}")
+    if port != old and not ports.port_available(cfg.get("bind_address", "0.0.0.0"), port):
+        print(f"warning: something is already listening on port {port}; "
+              "TC Lab will not be able to start there until it is free")
+    print("Restart the service to use it:   sudo systemctl restart tc_lab")
+    return EXIT_OK
+
+
 def _version():
     """The version string lives in app.py's first line ("app.py v9.2"); read it
     rather than keep a second copy that could drift."""
@@ -205,6 +241,8 @@ examples:
   sudo tc-lab reset-admin-password     set a new admin password (prompted, not echoed)
   sudo tc-lab list-users               show accounts and their roles
   sudo tc-lab list-users --json        the same, machine-readable
+  sudo tc-lab set-port 5000            move the dashboard back to port 5000
+                                       (then: sudo systemctl restart tc_lab)
   tc-lab --version                     show the installed version
 
 related:
@@ -247,6 +285,17 @@ def main(argv=None):
         description="List every dashboard account and its role. Password hashes are never shown.")
     l.add_argument("--json", action="store_true", help="machine-readable output")
     l.set_defaults(func=cmd_list_users)
+
+    sp = sub.add_parser(
+        "set-port", help="set the dashboard's port (root only)",
+        description=(
+            f"Set the port the dashboard listens on ({ports.PORT_MIN}-{ports.PORT_MAX}).\n\n"
+            "Must run as root. Changes only 'port' in config.json; restart the\n"
+            "service to apply it. Use it when the dashboard cannot be reached on\n"
+            "its current port — day to day, change the port in Settings."),
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    sp.add_argument("port", help="the new port, e.g. 5000")
+    sp.set_defaults(func=cmd_set_port)
 
     args = p.parse_args(argv)
     if not args.command:

@@ -10,6 +10,7 @@
 #   sudo bash setup.sh --keep-users     # never prompt, keep existing accounts
 #   sudo bash setup.sh --reset-users    # never prompt, wipe accounts (fresh admin)
 #   sudo bash setup.sh --no-backup      # skip the pre-upgrade snapshot
+#   sudo bash setup.sh --port 8443      # dashboard port (1024-65535; default 5000)
 #   sudo bash setup.sh --list-backups   # show snapshots available to roll back to
 #   sudo bash setup.sh --rollback       # restore the most recent snapshot
 #   sudo bash setup.sh --rollback NAME  # restore a specific one (see --list-backups)
@@ -42,13 +43,19 @@ BACKUP_DIR="${TC_LAB_BACKUP_DIR:-/var/backups/tc-lab}"
 BIN_DIR="${TC_LAB_BIN_DIR:-/usr/local/bin}"
 KEEP_BACKUPS="${TC_LAB_KEEP_BACKUPS:-5}"
 SRC_DIR="$(dirname "$(realpath "$0")")"
+# Dashboard port range — the same rule as ports.py (a test keeps them in step).
+# The service is not root, so it cannot listen below 1024.
+PORT_MIN=1024
+PORT_MAX=65535
+PORT_ARG=""
+PORT_SET=0
 USERS_MODE="ask"
 DO_BACKUP=1
 ACTION="install"
 ROLLBACK_NAME=""
 
 usage() {
-    sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -57,6 +64,7 @@ while [ $# -gt 0 ]; do
         --keep-users)   USERS_MODE="keep"  ;;
         --reset-users)  USERS_MODE="reset" ;;
         --no-backup)    DO_BACKUP=0 ;;
+        --port)         PORT_SET=1; PORT_ARG="${2:-}"; [ $# -gt 1 ] && shift ;;
         --list-backups) ACTION="list" ;;
         --rollback)
             ACTION="rollback"
@@ -68,6 +76,17 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+if [ "$PORT_SET" -eq 1 ]; then
+    [ "$ACTION" = "install" ] || { echo "error: --port only applies to an install or upgrade" >&2; exit 1; }
+    case "$PORT_ARG" in
+        ""|*[!0-9]*) echo "error: --port needs a number, got '${PORT_ARG}'" >&2; exit 1 ;;
+    esac
+    PORT_ARG=$((10#$PORT_ARG))
+    if [ "$PORT_ARG" -lt "$PORT_MIN" ] || [ "$PORT_ARG" -gt "$PORT_MAX" ]; then
+        echo "error: --port must be between ${PORT_MIN} and ${PORT_MAX}" >&2; exit 1
+    fi
+fi
 
 [ "$(id -u)" -eq 0 ] || { echo "error: run this as root (sudo bash setup.sh)" >&2; exit 1; }
 
@@ -295,6 +314,21 @@ CUR_USERS="${USERS_FILE}"
 IS_UPGRADE=0
 [ -f "${INSTALL_DIR}/app.py" ] && IS_UPGRADE=1
 
+# The port the install uses now (config.json in either layout; 5000 if none).
+current_port() {
+    local f
+    for f in "${INSTALL_DIR}/config.json" "${STATE_DIR}/config.json"; do
+        [ -f "$f" ] && { grep -oP '"port"\s*:\s*\K[0-9]+' "$f" 2>/dev/null && return 0; }
+    done
+    echo 5000
+}
+if [ "$PORT_SET" -eq 1 ] && [ "$PORT_ARG" != "$(current_port | head -1)" ] \
+   && command -v ss >/dev/null 2>&1 \
+   && [ -n "$(ss -Hltn "sport = :${PORT_ARG}" 2>/dev/null)" ]; then
+    echo "error: something is already listening on port ${PORT_ARG}; nothing was changed" >&2
+    exit 1
+fi
+
 if [ "$IS_UPGRADE" -eq 1 ]; then
     echo "[*] Existing install detected at ${INSTALL_DIR} — upgrading."
 else
@@ -400,6 +434,29 @@ JSON
 else
     echo "[*] Keeping existing config.json"
 fi
+if [ "$PORT_SET" -eq 1 ]; then
+    if python3 - "${STATE_DIR}/config.json" "$PORT_ARG" <<'PY'
+import json, sys
+path, port = sys.argv[1], int(sys.argv[2])
+with open(path) as f:
+    cfg = json.load(f)
+cfg["port"] = port
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+PY
+    then
+        echo "[*] Dashboard port set to ${PORT_ARG}"
+    else
+        echo "[!] Could not update the port in ${STATE_DIR}/config.json — it is not"
+        echo "    valid JSON. Fix the file, then: sudo tc-lab set-port ${PORT_ARG}"
+    fi
+fi
+CFG_PORT=$(grep -oP '"port"\s*:\s*\K[0-9]+' "${STATE_DIR}/config.json" 2>/dev/null || echo 5000)
+if [ "$CFG_PORT" -lt "$PORT_MIN" ]; then
+    echo "[!] config.json sets port ${CFG_PORT}. TC Lab no longer runs as root, so it"
+    echo "    cannot listen below ${PORT_MIN}; it will use 5000 instead. Choose another"
+    echo "    port with: sudo bash setup.sh --port <port>  (or sudo tc-lab set-port <port>)"
+fi
 
 # ── 3. Virtualenv ──────────────────────────────────────────────────────────
 [ -d "${INSTALL_DIR}/venv" ] || python3 -m venv "${INSTALL_DIR}/venv"
@@ -469,7 +526,7 @@ systemctl restart "${SERVICE}"
 sleep 2
 
 IP=$(hostname -I | awk '{print $1}')
-PORT=$(grep -oP '"port"\s*:\s*\K[0-9]+' "${STATE_DIR}/config.json" 2>/dev/null || echo 5000)
+PORT="$CFG_PORT"; [ "$PORT" -ge "$PORT_MIN" ] || PORT=5000
 echo ""
 echo "============================================================"
 if systemctl is-active --quiet "${SERVICE}"; then

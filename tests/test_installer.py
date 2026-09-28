@@ -205,3 +205,54 @@ def test_state_dir_must_differ_from_install_dir(box):
     box.env["TC_LAB_STATE_DIR"] = str(box.install)
     out = setup(box, ok=False)
     assert "must not be the install directory" in out
+
+
+# ── --port (v9.3) ─────────────────────────────────────────────────────────────
+def free_port():
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_fresh_install_with_port(box):
+    port = free_port()
+    out = setup(box, "--port", str(port))
+    assert json.loads((box.state / "config.json").read_text())["port"] == port
+    assert f":{port}" in out and f"port set to {port}" in out
+
+
+def test_upgrade_with_port_keeps_other_settings(box):
+    setup(box)
+    cfg = box.state / "config.json"
+    cfg.write_text(json.dumps({"idle_timeout_minutes": 45, "bind_address": "10.0.0.1",
+                               "port": 5000}))
+    port = free_port()
+    setup(box, "--keep-users", "--port", str(port))
+    assert json.loads(cfg.read_text()) == {"idle_timeout_minutes": 45,
+                                           "bind_address": "10.0.0.1", "port": port}
+
+
+@pytest.mark.parametrize("bad,msg", [("80", "between 1024"), ("x", "needs a number")])
+def test_bad_port_stops_before_anything_changes(box, bad, msg):
+    out = setup(box, "--port", bad, ok=False)
+    assert msg in out
+    assert not (box.install / "app.py").exists() and not box.state.exists()
+
+
+def test_busy_port_stops_before_anything_changes(box):
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0)); s.listen()
+        out = setup(box, "--port", str(s.getsockname()[1]), ok=False)
+    assert "already listening" in out
+    assert not (box.install / "app.py").exists() and not box.state.exists()
+
+
+def test_low_port_from_old_install_is_flagged(box):
+    legacy_install(box)
+    cfg = json.loads((box.install / "config.json").read_text())
+    (box.install / "config.json").write_text(json.dumps({**cfg, "port": 443}))
+    out = setup(box, "--keep-users")
+    assert "cannot listen below 1024" in out
+    assert "Open:          https://" in out and ":5000" in out
