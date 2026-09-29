@@ -220,6 +220,97 @@ def test_cli_writes_backup(store, monkeypatch):
     assert auth.USERS_FILE.with_suffix(".json.bak").exists()
 
 
+def test_cli_hands_written_files_to_the_service_user(store, monkeypatch):
+    """v9.3: the service runs as its own user. Files root writes here — above
+    all a users.json recreated from scratch — must end up owned by that user,
+    or the service cannot read them and nobody can sign in."""
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(cli, "_state_owner", lambda: (4242, 4243))
+    chowned = {}
+    monkeypatch.setattr(cli.os, "chown", lambda p, u, g: chowned.__setitem__(str(p), (u, g)))
+    auth.USERS_FILE.unlink()                          # force a brand-new store
+    assert cli.main(["reset-admin-password", "--password", "freshstorepw1"]) == cli.EXIT_OK
+    assert chowned[str(auth.USERS_FILE)] == (4242, 4243)
+
+    cli.main(["reset-admin-password", "--password", "secondresetpw"])   # now with a backup
+    assert chowned[str(auth.USERS_FILE.with_suffix(".json.bak"))] == (4242, 4243)
+
+
+def test_cli_leaves_ownership_alone_when_root_owns_the_state(store, monkeypatch):
+    """Before v9.3 the state is root's; nothing to hand over."""
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(cli, "_state_owner", lambda: (0, 0))
+    chowned = []
+    monkeypatch.setattr(cli.os, "chown", lambda *a: chowned.append(a))
+    assert cli.main(["reset-admin-password", "--password", "legacylayout1"]) == cli.EXIT_OK
+    assert chowned == []
+
+
+# ── CLI set-port (v9.3) ───────────────────────────────────────────────────────
+@pytest.fixture
+def cfgfile():
+    f = auth._SD / "config.json"
+    f.write_text(json.dumps({"idle_timeout_minutes": 45, "bind_address": "0.0.0.0",
+                             "port": 8443}))
+    yield f
+    f.unlink(missing_ok=True)
+
+
+def test_cli_set_port_requires_root(cfgfile, monkeypatch, capsys):
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 1000)
+    before = cfgfile.read_text()
+    with pytest.raises(SystemExit) as e:
+        cli.main(["set-port", "5000"])
+    # EXIT_PERM is 2 — the same code argparse uses for an unknown command — so
+    # also check it was refused for the right reason.
+    assert e.value.code == cli.EXIT_PERM
+    assert "must be run as root" in capsys.readouterr().err
+    assert cfgfile.read_text() == before
+
+
+def test_cli_set_port_changes_only_the_port(cfgfile, monkeypatch, capsys):
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(cli.ports, "port_available", lambda h, p: True)
+    assert cli.main(["set-port", "5000"]) == cli.EXIT_OK
+    cfg = json.loads(cfgfile.read_text())
+    assert cfg == {"idle_timeout_minutes": 45, "bind_address": "0.0.0.0", "port": 5000}
+    out = capsys.readouterr().out
+    assert "was 8443" in out and "systemctl restart tc_lab" in out
+
+
+@pytest.mark.parametrize("bad", ["80", "70000", "abc", ""])
+def test_cli_set_port_rejects_bad_port(cfgfile, monkeypatch, bad):
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    before = cfgfile.read_text()
+    assert cli.main(["set-port", bad]) == cli.EXIT_ERR
+    assert cfgfile.read_text() == before
+
+
+def test_cli_set_port_refuses_unreadable_config(cfgfile, monkeypatch, capsys):
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    cfgfile.write_text("{not json")
+    assert cli.main(["set-port", "5000"]) == cli.EXIT_ERR
+    assert cfgfile.read_text() == "{not json"                 # left for a human
+    assert "cannot read" in capsys.readouterr().err
+
+
+def test_cli_set_port_warns_when_port_busy(cfgfile, monkeypatch, capsys):
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(cli.ports, "port_available", lambda h, p: False)
+    assert cli.main(["set-port", "5000"]) == cli.EXIT_OK
+    assert "already listening" in capsys.readouterr().out
+
+
+def test_cli_set_port_hands_config_to_service(cfgfile, monkeypatch):
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(cli.ports, "port_available", lambda h, p: True)
+    monkeypatch.setattr(cli, "_state_owner", lambda: (4242, 4243))
+    chowned = {}
+    monkeypatch.setattr(cli.os, "chown", lambda p, u, g: chowned.__setitem__(str(p), (u, g)))
+    assert cli.main(["set-port", "5000"]) == cli.EXIT_OK
+    assert chowned[str(cfgfile)] == (4242, 4243)
+
+
 def test_cli_list_users_hides_hashes(store, monkeypatch, capsys):
     monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
     assert cli.main(["list-users"]) == cli.EXIT_OK

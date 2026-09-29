@@ -1,8 +1,8 @@
-"""app.py v9.2.1"""
-import os, json, logging, subprocess
+"""app.py v9.3"""
+import os, sys, json, logging, subprocess, threading
 from datetime import timedelta
 from pathlib import Path
-from flask import Flask, request, jsonify, render_template, abort
+from flask import Flask, request, jsonify, render_template, abort, send_from_directory
 from flask_login import login_required, current_user
 from flask_wtf import CSRFProtect
 from werkzeug.exceptions import HTTPException
@@ -11,13 +11,23 @@ from auth           import (auth_bp, login_manager, limiter, get_or_create_secre
                             list_users, create_user, delete_user, set_password,
                             set_role, VALID_ROLES)
 from tc_manager     import (apply_netem, remove_qdisc, get_qdisc_stats,
-                             list_interfaces, detect_all_tc_configs, split_config_for_members)
+                             list_interfaces, detect_all_tc_configs, split_config_for_members,
+                             combine_member_configs)
+from ports          import DEFAULT_PORT, parse_port, port_available
+import help_docs
+import mgmt_guard
 from bridge_manager import (create_bridge, delete_bridge, add_member, remove_member,
                              set_bridge_up, get_bridge_stats, get_all_bridges,
                              get_all_link_info, list_unbridged_interfaces,
                              is_foreign_bridge)
 from vlan_manager   import (list_vlan_interfaces, list_physical_interfaces,
-                             create_vlan, delete_vlan, set_iface_up, get_iface_stats)
+                             create_vlan, delete_vlan, set_iface_up, get_iface_stats,
+                             interface_for)
+
+# The one place the version is written: the docstring above ("app.py vX.Y").
+# The page, the export and Help → About read it from here; `tc-lab --version`
+# reads the same line from the file.
+VERSION = (__doc__ or "").split()[-1].lstrip("v")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -57,8 +67,9 @@ def _security_headers(resp):
         "base-uri 'none'; frame-ancestors 'none'")
     return resp
 
-# All writable state lives under STATE_DIR (default: cwd, i.e. /opt/tc_lab under
-# systemd). Set TC_LAB_STATE_DIR to move it elsewhere, e.g. onto its own mount.
+# All writable state lives under STATE_DIR: TC_LAB_STATE_DIR, which the systemd
+# unit sets to /var/lib/tc_lab (the only directory the service can write), or
+# the current directory when run by hand from a checkout.
 STATE_DIR      = Path(os.environ.get("TC_LAB_STATE_DIR", "."))
 PROFILES_DIR   = STATE_DIR / "profiles"
 STATE_FILE     = STATE_DIR / "state.json"
@@ -68,7 +79,14 @@ NET_CONFIG_FILE = STATE_DIR / "network_config.json"   # ← persistence for brid
 PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 
 VALID          = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
-DEFAULT_CONFIG = {"idle_timeout_minutes": 30, "bind_address": "0.0.0.0", "port": 5000}
+
+# A lab bridge joins the two sides of one path: exactly what the round-trip
+# totals on the bridge card assume (one member per direction).
+MAX_BRIDGE_MEMBERS = 2
+MEMBERS_MSG = ("A bridge has at most 2 members — one for each side of the lab path. "
+               "Remove one first.")
+DEFAULT_CONFIG = {"idle_timeout_minutes": 30, "bind_address": "0.0.0.0", "port": DEFAULT_PORT,
+                  "management_interface": "", "protect_management": mgmt_guard.DEFAULT_PROTECT}
 
 # ── Error handler ──────────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
@@ -102,8 +120,32 @@ def _save_json(p, data):
 
 # ── Network config persistence ─────────────────────────────────────────────────
 
+# ── Management interface (see mgmt_guard.py) ───────────────────────────────────
+MGMT_LOCKED_MSG = ("{} is the management interface, and it is protected. To use it anyway — "
+                   "at your own risk — unlock it in Settings → Management Interface.")
+
+def _mgmt():
+    """(management interface, locked) from the current settings."""
+    return mgmt_guard.settings(_config)
+
+def _vlans_or_none():
+    try:
+        return list_vlan_interfaces()
+    except Exception as e:                       # e.g. no iproute2 — never block a save
+        logger.warning("Cannot list VLANs: %s", e)
+        return []
+
+def _mgmt_related():
+    return mgmt_guard.related(_mgmt()[0], _vlans_or_none())
+
+def _save_state():
+    """state.json, minus impairments on the management interface: they apply now,
+    but must never come back after a reboot."""
+    _save_json(STATE_FILE, mgmt_guard.filter_state(_state, _mgmt()[0], _vlans_or_none()))
+
 def save_net_config():
-    """Snapshot current bridges+members and VLANs to network_config.json."""
+    """Snapshot current bridges+members and VLANs to network_config.json — never
+    anything involving the management interface (mgmt_guard.filter_net_config)."""
     try:
         bridges = get_all_bridges()
         vlans   = list_vlan_interfaces()
@@ -120,6 +162,10 @@ def save_net_config():
                 for v in vlans
             ]
         }
+        data, dropped = mgmt_guard.filter_net_config(data, _mgmt()[0])
+        if dropped:
+            logger.warning("Not persisting (uses the management interface): %s",
+                           ", ".join(dropped))
         _save_json(NET_CONFIG_FILE, data)
         logger.info("Network config saved (%d bridges, %d VLANs)",
                     len(data["bridges"]), len(data["vlans"]))
@@ -157,14 +203,32 @@ def restore_via_script():
         logger.warning("restore_network.sh error: %s", e)
 
 
+def _bridge_total(bridges, br):
+    """What the bridge card shows: the combined impairment of its members.
+    Members are the only record of what is applied — a bridge has no qdisc of
+    its own and no separate value to go stale."""
+    members = bridges.get(br, {}).get("members", [])
+    return combine_member_configs([_state.get(m, {}) for m in members])
+
+def _drop_bridge_keys(state, bridge_names):
+    """v9.2 also stored a bridge's own value next to its members'. Members are
+    the record now; a leftover bridge entry could only disagree with them."""
+    for br in bridge_names:
+        state.pop(br, None)
+    return state
+
 def _reapply_tc(saved, bridge_names):
     """Re-push saved tc rules to kernel after a reboot."""
     if not saved:
         return
     logger.info("Re-applying %d saved tc rule(s)...", len(saved))
     ok_count = 0
+    mgmt, _ = _mgmt()
     for iface, config in saved.items():
         if iface in bridge_names:
+            continue
+        if mgmt_guard.is_related(iface, mgmt):
+            logger.warning("  not re-applying tc on the management interface: %s", iface)
             continue
         if not config or not any(float(v) > 0 for v in config.values()):
             continue
@@ -195,17 +259,22 @@ def _init():
         logger.warning("TC_LAB_SKIP_RESTORE set — skipping topology restore, "
                        "tc re-apply and live-scan")
         return
-    # 1. Restore VLANs + bridges + members via shell script (reliable ordering)
-    restore_via_script()
-    # 2. Load saved tc state
     saved = _load_json(STATE_FILE)
-    # 3. Re-apply saved tc rules to the kernel
-    bridge_names = set(get_all_bridges().keys())
-    _reapply_tc(saved, bridge_names)
-    # 4. Scan live rules
+    if os.environ.pop("TC_LAB_RESTARTED", None):
+        # Restarted in place to move to a new port (_restart_in_place): the
+        # kernel's bridges, VLANs and qdiscs were never touched, so rebuilding
+        # them would only interrupt the impairments for nothing.
+        logger.info("Restarted in place — topology and tc left as they are")
+    else:
+        # 1. Restore VLANs + bridges + members via shell script (reliable ordering)
+        restore_via_script()
+        # 2. Re-apply saved tc rules to the kernel
+        bridge_names = set(get_all_bridges().keys())
+        _reapply_tc(saved, bridge_names)
+    # 3. Scan live rules
     live   = detect_all_tc_configs(list_interfaces())
-    _state = {**saved, **live}
-    _save_json(STATE_FILE, _state)
+    _state = _drop_bridge_keys({**saved, **live}, get_all_bridges().keys())
+    _save_state()
     if live: logger.info("Live tc detected on: %s", list(live.keys()))
 
 def _name_ok(s, maxlen=20):
@@ -310,6 +379,9 @@ def _sanitize_bundle(bundle):
             for m in members:
                 if not _name_ok(m):
                     raise ValueError(f"invalid bridge member: {_show(m)}")
+            if len(members) > MAX_BRIDGE_MEMBERS:
+                raise ValueError(f"bridge {_show(br)} has {len(members)} members "
+                                 f"(at most {MAX_BRIDGE_MEMBERS})")
             cn["bridges"][br] = {"members": list(members),
                                  "stp": bool(info.get("stp", False))}
         vlans = net.get("vlans") or []
@@ -333,7 +405,7 @@ def _sanitize_bundle(bundle):
 # ── UI ─────────────────────────────────────────────────────────────────────────
 @app.route("/")
 @login_required
-def index(): return render_template("index.html")
+def index(): return render_template("index.html", version=VERSION)
 
 # ── Discovery ──────────────────────────────────────────────────────────────────
 @app.route("/api/interfaces")
@@ -350,8 +422,13 @@ def api_interfaces():
         meta[n] = {"is_bridge": n in bridges, "is_member": n in member_of,
                    "master": member_of.get(n, ""), "state": "up" if "UP" in f else "down",
                    "mtu": link.get("mtu", "")}
+    totals = {br: _bridge_total(bridges, br) for br in bridges}
+    mgmt, locked = _mgmt()
+    mgmt_info = {"interface": mgmt, "locked": locked,
+                 "related": sorted(mgmt_guard.related(mgmt, _vlans_or_none()))}
     return jsonify({"interfaces": ifaces, "bridges": bridges, "unbridged": unbridged,
-                    "meta": meta, "state": _state, "labels": _labels})
+                    "meta": meta, "state": _state, "labels": _labels, "totals": totals,
+                    "mgmt": mgmt_info})
 
 # ── TC ─────────────────────────────────────────────────────────────────────────
 @app.route("/api/stats/<iface>")
@@ -373,12 +450,22 @@ def api_apply(iface):
             r = apply_netem(m, mc); results[m] = r
             if r["ok"]: _state[m] = mc
             else:       all_ok = False
-        _state[iface] = config; _save_json(STATE_FILE, _state)
+        _state.pop(iface, None); _save_state()
         return jsonify({"ok": all_ok, "is_bridge": True, "members": members,
-                        "results": results, "split_cfg": mc}), 200 if all_ok else 500
+                        "results": results, "split_cfg": mc,
+                        "total": _bridge_total(bridges, iface)}), 200 if all_ok else 500
     result = apply_netem(iface, config)
-    if result["ok"]: _state[iface] = config; _save_json(STATE_FILE, _state)
+    if result["ok"]: _state[iface] = config; _save_state()
+    result.update(_member_update(bridges, iface))
     return jsonify(result), 200 if result["ok"] else 500
+
+def _member_update(bridges, iface):
+    """For a bridge member: which bridge, and its new total — the page shows it
+    on the bridge card straight away."""
+    for br, info in bridges.items():
+        if iface in info.get("members", []):
+            return {"bridge": br, "total": _bridge_total(bridges, br)}
+    return {}
 
 @app.route("/api/reset/<iface>", methods=["POST"])
 @login_required
@@ -389,11 +476,13 @@ def api_reset(iface):
         results = {m: remove_qdisc(m) for m in members}
         for m, r in results.items():
             if r["ok"]: _state.pop(m, None)
-        _state.pop(iface, None); _save_json(STATE_FILE, _state)
+        _state.pop(iface, None); _save_state()
         return jsonify({"ok": all(v["ok"] for v in results.values()) if results else True,
-                        "is_bridge": True, "members": results})
+                        "is_bridge": True, "members": results,
+                        "total": _bridge_total(bridges, iface)})
     result = remove_qdisc(iface)
-    if result["ok"]: _state.pop(iface, None); _save_json(STATE_FILE, _state)
+    if result["ok"]: _state.pop(iface, None); _save_state()
+    result.update(_member_update(bridges, iface))
     return jsonify(result)
 
 # ── Labels ─────────────────────────────────────────────────────────────────────
@@ -417,6 +506,10 @@ def api_get_config(): return jsonify(_config)
 def api_set_config():
     global _config
     data = request.get_json(silent=True) or {}
+    if "port" in data:
+        return _set_port(data["port"])
+    if "management_interface" in data or "protect_management" in data:
+        return _set_mgmt(data)
     if "idle_timeout_minutes" in data:
         try:
             v = int(data["idle_timeout_minutes"])
@@ -425,6 +518,84 @@ def api_set_config():
         except: return jsonify({"ok": False, "error": "Invalid value"}), 400
     _save_json(CONFIG_FILE, _config)
     return jsonify({"ok": True, "config": _config})
+
+def _set_mgmt(data):
+    """Settings → Management Interface: which interface, and whether it is locked."""
+    new = dict(_config)
+    if "management_interface" in data:
+        iface = str(data["management_interface"] or "").strip()
+        if iface and not _name_ok(iface, maxlen=15):
+            return jsonify({"ok": False, "error": "Invalid interface name"}), 400
+        new["management_interface"] = iface
+    if "protect_management" in data:
+        if not isinstance(data["protect_management"], bool):
+            return jsonify({"ok": False, "error": "protect_management must be true or false"}), 400
+        new["protect_management"] = data["protect_management"]
+    try:
+        CONFIG_FILE.write_text(json.dumps(new, indent=2))
+    except OSError as e:
+        logger.error("Management setting: cannot write %s: %s", CONFIG_FILE, e)
+        return jsonify({"ok": False, "error": "Could not save the setting"}), 500
+    _config.update(new)
+    mgmt, locked = _mgmt()
+    logger.warning("Management interface set to %r, %s, by %s", mgmt,
+                   "protected" if locked else "NOT protected", current_user.id)
+    return jsonify({"ok": True, "config": _config})
+
+@app.route("/api/config/mgmt-suggest")
+@login_required
+@admin_required
+def api_mgmt_suggest():
+    """The interface this admin's own connection arrives on — almost always the
+    management interface."""
+    return jsonify({"interface": interface_for(request.remote_addr) or ""})
+
+# ── Service port ───────────────────────────────────────────────────────────────
+# Changing the port means listening somewhere else, which a running server
+# cannot do — so TC Lab saves the new port and replaces itself with a fresh
+# copy of the same program (execve), which starts on it. The process, its two
+# capabilities and the systemd service all carry on; bridges, VLANs and
+# impairments in the kernel are not touched (see TC_LAB_RESTARTED in _init).
+RESTART_DELAY_S = 1.0          # long enough for the JSON reply to reach the browser
+
+def _set_port(value):
+    try:
+        port = parse_port(value)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    current = _config.get("port", DEFAULT_PORT)
+    if port == current:
+        return jsonify({"ok": True, "port": port, "restarting": False})
+    if not port_available(_config.get("bind_address", "0.0.0.0"), port):
+        return jsonify({"ok": False,
+                        "error": f"Port {port} is already in use on this host"}), 400
+    new = {**_config, "port": port}
+    try:
+        CONFIG_FILE.write_text(json.dumps(new, indent=2))
+    except OSError as e:
+        logger.error("Port change: cannot write %s: %s", CONFIG_FILE, e)
+        return jsonify({"ok": False, "error": "Could not save the setting"}), 500
+    _config.update(new)
+    logger.warning("Service port changed %s -> %s by %s; restarting",
+                   current, port, current_user.id)
+    _schedule_restart()
+    return jsonify({"ok": True, "port": port, "restarting": True})
+
+def _schedule_restart(delay=RESTART_DELAY_S):
+    t = threading.Timer(delay, _restart_in_place)
+    t.daemon = True
+    t.start()
+
+def _restart_in_place():
+    sys.stdout.flush(); sys.stderr.flush()
+    # Werkzeug marks its listening socket inheritable (and names it in
+    # WERKZEUG_SERVER_FD) for its reloader, so without this the new process
+    # would inherit the OLD port: never served again, but still bound — and
+    # "moving back" to it would then fail as in use. Keep only stdin/out/err.
+    env = {k: v for k, v in os.environ.items() if k != "WERKZEUG_SERVER_FD"}
+    env["TC_LAB_RESTARTED"] = "1"
+    os.closerange(3, os.sysconf("SC_OPEN_MAX"))
+    os.execve(sys.executable, [sys.executable] + sys.argv, env)
 
 # ── User management (admin only) ───────────────────────────────────────────────
 # Every route here is @admin_required, so a "user" role gets 403 regardless of
@@ -514,7 +685,14 @@ def api_bridge_updown(name):
 @admin_required
 def api_add_member(name):
     data = request.get_json(silent=True) or {}
-    r = add_member(vname(name), vname(data.get("iface", "")))
+    name, iface = vname(name), vname(data.get("iface", ""))
+    members = get_all_bridges().get(name, {}).get("members", [])
+    if len(members) >= MAX_BRIDGE_MEMBERS and iface not in members:
+        return jsonify({"ok": False, "stderr": MEMBERS_MSG}), 400
+    mgmt, locked = _mgmt()
+    if locked and mgmt_guard.is_related(iface, mgmt, _vlans_or_none()):
+        return jsonify({"ok": False, "stderr": MGMT_LOCKED_MSG.format(mgmt)}), 403
+    r = add_member(name, iface)
     if r["ok"]: save_net_config()          # ← persist
     return jsonify(r)
 
@@ -551,6 +729,9 @@ def api_create_vlan():
     name = data.get("name", "").strip()
     if name and not _name_ok(name):
         return jsonify({"ok": False, "stderr": "Invalid name"}), 400
+    mgmt, locked = _mgmt()
+    if locked and parent == mgmt:
+        return jsonify({"ok": False, "stderr": MGMT_LOCKED_MSG.format(mgmt)}), 403
     r = create_vlan(parent, int(vid_raw), name or None)
     if r["ok"]: save_net_config()          # ← persist
     return jsonify(r)
@@ -579,7 +760,11 @@ def api_vlan_stats(name): return jsonify(get_iface_stats(vname(name)))
 @admin_required
 def api_iface_up(name):
     data = request.get_json(silent=True) or {}
-    return jsonify(set_iface_up(vname(name), up=bool(data.get("up", True))))
+    name, up = vname(name), bool(data.get("up", True))
+    mgmt, locked = _mgmt()
+    if locked and not up and name == mgmt:
+        return jsonify({"ok": False, "stderr": MGMT_LOCKED_MSG.format(mgmt)}), 403
+    return jsonify(set_iface_up(name, up=up))
 
 # ── Profiles ───────────────────────────────────────────────────────────────────
 @app.route("/api/profiles")
@@ -619,7 +804,7 @@ def api_export():
         try: profiles[f.stem] = json.loads(f.read_text())
         except: pass
     bundle = {
-        "version":  "9.2.1",
+        "version":  VERSION,
         "exported": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "network":  _load_json(NET_CONFIG_FILE),
         "tc_state": _load_json(STATE_FILE),
@@ -654,6 +839,14 @@ def api_import():
 
     ver = bundle.get("version", "?")
     imported = []
+    mgmt, locked = _mgmt()
+    if bundle.get("network"):
+        bundle["network"], dropped = mgmt_guard.filter_net_config(bundle["network"], mgmt)
+        if dropped and locked:
+            return jsonify({"ok": False, "stderr": "Rejected bundle: it uses the protected "
+                            f"management interface {mgmt} ({', '.join(dropped)})"}), 400
+        if dropped:
+            imported.append("skipped (management interface): " + ", ".join(dropped))
 
     # Profiles
     profs = bundle.get("profiles", {})
@@ -672,8 +865,14 @@ def api_import():
 
     # TC state — save to disk; will be re-applied on next restart
     if "tc_state" in bundle:
-        _state = bundle["tc_state"]
-        _save_json(STATE_FILE, _state)
+        bundle_bridges = ((bundle.get("network") or {}).get("bridges") or {}).keys()
+        try:
+            live_bridges = set(get_all_bridges().keys())
+        except Exception as e:                   # e.g. no iproute2 — import must still work
+            logger.warning("Import: cannot list bridges: %s", e)
+            live_bridges = set()
+        _state = _drop_bridge_keys(dict(bundle["tc_state"]), set(bundle_bridges) | live_bridges)
+        _save_state()
         imported.append("tc_state")
 
     # Network config — save to disk; apply immediately via restore script
@@ -688,16 +887,74 @@ def api_import():
 
     return jsonify({"ok": True, "version": ver, "imported": imported})
 
+# ── Help ───────────────────────────────────────────────────────────────────────
+# The documentation that ships with this install, rendered by help_docs. Every
+# signed-in user may read it; the page is named from a fixed list, never a path.
+@app.route("/api/help")
+@login_required
+def api_help_index():
+    return jsonify({"version": VERSION, "project_url": help_docs.PROJECT_URL,
+                    "pages": [{"id": p, "title": t} for p, t, _ in help_docs.PAGES]})
+
+@app.route("/api/help/<page>")
+@login_required
+def api_help_page(page):
+    try:
+        title, html = help_docs.render(page, VERSION)
+    except KeyError:
+        return jsonify({"ok": False, "error": "No such help page"}), 404
+    except OSError as e:
+        logger.warning("Help page %s: %s", page, e)
+        return jsonify({"ok": False, "error": "This page is not installed"}), 404
+    return jsonify({"ok": True, "id": page, "title": title, "html": html})
+
+@app.route("/help/img/<name>")
+@login_required
+def help_image(name):
+    if not help_docs.IMG_NAME.match(name):
+        abort(404)
+    return send_from_directory(help_docs.IMG_DIR, name, max_age=3600)
+
 # ── Entry point ────────────────────────────────────────────────────────────────
+CAP_NET_ADMIN = 12
+
+def _listen_port(config):
+    """The configured port, or the default when it is unusable — e.g. 443 from a
+    pre-v9.3 install, which the non-root service cannot listen on."""
+    try:
+        return parse_port(config.get("port", DEFAULT_PORT))
+    except ValueError as e:
+        logger.warning("config.json port %r: %s -- using %d instead. "
+                       "Set another with: sudo tc-lab set-port <port>",
+                       config.get("port"), e, DEFAULT_PORT)
+        return DEFAULT_PORT
+
+def _has_net_admin(status_text):
+    """True if a /proc/<pid>/status text shows CAP_NET_ADMIN in the effective
+    set. Under systemd the service is not root — it holds this capability
+    instead — so checking the UID would be the wrong test."""
+    for line in status_text.splitlines():
+        if line.startswith("CapEff:"):
+            try:
+                return bool(int(line.split()[1], 16) >> CAP_NET_ADMIN & 1)
+            except (IndexError, ValueError):
+                return False
+    return False
+
 if __name__ == "__main__":
     _init()
-    if os.geteuid() != 0:
-        print("[WARNING] Not root -- tc/bridge/vlan/cert commands require root.")
+    try:
+        with open("/proc/self/status") as f:
+            _can_admin = _has_net_admin(f.read())
+    except OSError:
+        _can_admin = False
+    if not _can_admin:
+        print("[WARNING] No CAP_NET_ADMIN -- tc/bridge/vlan changes will fail. "
+              "Run it as root, or through the systemd unit.")
     from ssl_gen import ensure_cert
     cert, key = ensure_cert()
     bind = _config.get("bind_address", "0.0.0.0")
-    try:    port = int(_config.get("port", 5000))
-    except (TypeError, ValueError): port = 5000
+    port = _listen_port(_config)
     print(f"[TLS] HTTPS on https://{bind}:{port}")
     print("[TLS] To skip Chrome warning: chrome://settings/certificates")
     print("      Authorities -> Import cert.pem -> Trust for HTTPS")

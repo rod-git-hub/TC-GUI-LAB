@@ -13,17 +13,22 @@ interfaces. Built for Fortinet SD-WAN, SASE, and general network lab testing.
 
 - Apply **latency, jitter, packet loss, duplication, corruption, and rate limiting**
   to any interface in real time
-- **Bridge grouping** — control member interfaces together or individually
+- **Bridges** — impair a whole lab path at once (the bridge shows the round-trip total
+  of its two members), or set each side separately
 - **802.1Q VLAN** sub-interface management
 - **Impairment profiles** — save and load presets (satellite, LTE, MPLS, etc.)
 - HTTPS with auto-generated self-signed TLS
 - CSRF protection, hardened session cookies, security headers, login rate-limiting
 - Light / Dark theme
-- Configurable idle session timeout
+- Configurable idle session timeout and dashboard port
+- **Help built in** — this documentation inside the dashboard, readable offline
+- **Management-interface protection** — keeps the interface you manage the host through
+  out of VLANs and bridges, and never lets such a setup survive a reboot
 - Role-based access — **admin** manages interfaces / bridges / VLANs and user accounts,
   **user** changes impairments
 - **User management in the dashboard** (admin-only) + `sudo tc-lab reset-admin-password` recovery
-- Runs as a sandboxed systemd service, confined to 2 of root's 40 capabilities
+- Runs as a sandboxed systemd service under its own unprivileged user, with only the
+  one network capability it needs
 
 ---
 
@@ -34,7 +39,7 @@ interfaces. Built for Fortinet SD-WAN, SASE, and general network lab testing.
 | Linux | Debian 12 / 13, Ubuntu 22.04 / 24.04 — the installer uses `apt` |
 | Init system | systemd |
 | Python | 3.9 or newer (installed for you) |
-| Privileges | Root (required for tc, ip, bridge) |
+| Privileges | root to install; the service runs as its own user, `tc-lab` |
 
 ---
 
@@ -54,17 +59,19 @@ Already running an older version? Follow **[docs/upgrading.md](docs/upgrading.md
 
 `setup.sh` will:
 - Install all dependencies (`requirements.txt`)
-- Copy files to `/opt/tc_lab`
+- Copy the code to `/opt/tc_lab`
+- Create the `tc-lab` service user and its state directory, `/var/lib/tc_lab`
 - Create a Python virtualenv
 - Generate a self-signed TLS cert
 - Install and **start the `tc_lab` systemd service automatically**
 
-Open **https://your-server-ip:5000** in your browser.
+Open **https://your-server-ip:5000** in your browser. (`sudo bash setup.sh --port 8443`
+picks another port.)
 
 > Running the tests: `pip install -r requirements-dev.txt && python -m pytest -q`
 
 > Chrome will warn about the self-signed certificate.
-> Click **Advanced → Proceed** to continue, or import `cert.pem` permanently
+> Click **Advanced → Proceed** to continue, or import `/var/lib/tc_lab/cert.pem` permanently
 > via `chrome://settings/certificates` → Authorities → Import → Trust for HTTPS.
 
 **Default credentials:** `admin` / `tclab123`
@@ -85,7 +92,8 @@ Open **https://your-server-ip:5000** in your browser.
 | [CHANGELOG.md](CHANGELOG.md) | Detailed change history, every version |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Working on TC Lab: tests, screenshots, release checklist |
 
-On the host, `tc-lab --help` lists the administration commands.
+The same documents are inside the dashboard, under **Help**. On the host,
+`tc-lab --help` lists the administration commands.
 
 ---
 
@@ -101,8 +109,9 @@ sudo systemctl restart tc_lab
 # Logs
 journalctl -u tc_lab -n 100
 
-# Install path
+# Code, and everything the service writes
 ls /opt/tc_lab/
+sudo ls /var/lib/tc_lab/
 ```
 
 ### Account recovery
@@ -115,29 +124,33 @@ sudo tc-lab reset-admin-password
 
 Prompts for the new password without echoing it, updates only the `admin`
 account, and leaves every other account untouched. `sudo tc-lab list-users`
-shows accounts and roles (never hashes).
+shows accounts and roles (never hashes); `sudo tc-lab set-port 5000` moves the
+dashboard back to port 5000 if it cannot be reached on another.
 
 ---
 
 ## 🔐 How the service is confined
 
-TC Lab has to run as root — `tc`, `ip` and `bridge` need it — so the systemd unit
-limits what that root can do:
+TC Lab needs network-admin rights for `tc` and `ip`, but not root. Installed as a
+service, it runs like this:
 
 | | |
 |---|---|
-| **Capabilities** | `CAP_NET_ADMIN` and `CAP_NET_RAW` only — 2 of root's 40. No `CAP_SYS_ADMIN`, `CAP_SYS_PTRACE`, `CAP_DAC_OVERRIDE`, `CAP_SETUID` or the rest. |
-| **Filesystem** | `ProtectSystem=full`, `ProtectHome=yes`, writable only under `/opt/tc_lab` |
-| **Process** | `NoNewPrivileges`, `PrivateTmp`, `MemoryDenyWriteExecute`, `RestrictSUIDSGID`, … |
-| **Install ownership** | `/opt/tc_lab` is owned by root and not group/other-writable |
+| **User** | its own system user, `tc-lab` — not root, no login shell |
+| **Capabilities** | `CAP_NET_ADMIN` only — 1 of root's 40, and it can never gain more. No `CAP_NET_RAW`, `CAP_SYS_ADMIN`, `CAP_SYS_PTRACE`, `CAP_DAC_OVERRIDE`, `CAP_SETUID` or the rest. |
+| **Filesystem** | `ProtectSystem=strict`: the whole system is read-only to it except its state directory, `/var/lib/tc_lab`, and a private, throwaway `/tmp`; `ProtectHome=yes`, `PrivateDevices` |
+| **Process** | `NoNewPrivileges`, `MemoryDenyWriteExecute`, `RestrictSUIDSGID`, `RestrictNamespaces`, a system-call filter, … |
+| **Code** | `/opt/tc_lab` is owned by root and not writable by the service or anyone else |
 
 Check it on a running install:
 
 ```bash
+ps -o user= -p "$(systemctl show tc_lab -p MainPID --value)"
 grep CapEff /proc/$(systemctl show tc_lab -p MainPID --value)/status
 ```
 
-`0000000000003000` means exactly those two capabilities. Kernel modules such as
+`tc-lab` and `0000000000001000` mean exactly that user and that one capability.
+`systemd-analyze security tc_lab` scores the sandboxing. Kernel modules such as
 `8021q` and `sch_htb` are still loaded on demand — by the kernel, not by TC Lab.
 
 ---
@@ -152,8 +165,8 @@ release, for three reasons:
   the *host's* real interfaces, so a container would have to share the host's
   network (`--network host`). It gets no network isolation.
 - **Its one real benefit is already here.** Containers are safer mainly because
-  they drop root's capabilities. The systemd unit does that itself — down to the
-  same two a container would keep ([details](#-how-the-service-is-confined)).
+  they drop root's capabilities. The systemd unit does that itself — down to a
+  single one, and not as root ([details](#-how-the-service-is-confined)).
 - **Installing Docker changes the host networking TC Lab depends on.** Docker loads
   `br_netfilter`, which sends *bridged* frames through iptables, and sets the
   iptables `FORWARD` policy to `DROP`. On a machine whose job is bridging lab
@@ -201,8 +214,9 @@ exist, `br_netfilter` is not loaded and there is nothing to do.
 4. Click Apply
 5. Click Reset to remove all impairments
 
-For bridges: applying to the bridge card splits values across all member
-interfaces. Use "Member controls" to fine-tune individual interfaces.
+For bridges: the bridge card shows the round-trip total of its two members, and
+applying to it splits the values across them. Use "Member controls" to set each
+side separately.
 
 Every page of the dashboard — profiles, export/import, users, settings, roles — is
 described step by step, with screenshots, in the
@@ -227,16 +241,17 @@ described step by step, with screenshots, in the
 
 ## 🔒 Security Notes
 
-> **This tool runs as root. Do NOT expose port 5000 to the public internet.**
-> Intended for **isolated lab environments only.**
+> **This tool reconfigures the host's network. Do NOT expose the dashboard (port 5000
+> by default) to the public internet.** Intended for **isolated lab environments only.**
 
 - Passwords are bcrypt-hashed; login is rate-limited
 - Transport is TLS-encrypted (self-signed cert); cookies are `Secure` + `SameSite=Strict`
 - CSRF tokens on every state-changing request; security headers + CSP on every response
 - Config-import bundles are fully validated before anything is written or replayed
 - Change the default password immediately
-- Bind to your management IP (`bind_address` in `config.json`) and firewall port 5000
-- The service runs with 2 of root's 40 capabilities — see
+- Bind to your management IP (`bind_address` in `/var/lib/tc_lab/config.json`) and
+  firewall the dashboard port
+- The service runs as its own unprivileged user with 1 capability — see
   [How the service is confined](#-how-the-service-is-confined)
 
 See [SECURITY.md](SECURITY.md) for the security model and known limitations,
@@ -255,11 +270,13 @@ tc-lab/
 ├── bridge_manager.py   # Linux bridge management
 ├── vlan_manager.py     # 802.1Q VLAN sub-interface management
 ├── ssl_gen.py          # Self-signed TLS certificate generator
+├── ports.py            # Dashboard port rules (shared by the app and the CLI)
+├── help_docs.py        # In-app Help: renders these documents
 ├── restore_helper.py   # Network restore logic (VLANs → bridges → members)
 ├── restore_network.sh  # Called by systemd ExecStartPre
-├── setup.sh            # systemd installer (deploys to /opt/tc_lab)
+├── setup.sh            # installer: code to /opt/tc_lab, state to /var/lib/tc_lab
 ├── tc_lab.service      # systemd unit (sandboxed)
-├── cli.py              # `tc-lab` CLI — admin password recovery
+├── cli.py              # `tc-lab` CLI — admin password recovery, port reset
 ├── tc-lab              # CLI wrapper, symlinked to /usr/local/bin by setup.sh
 ├── requirements.txt    # Pinned runtime deps  (requirements-dev.txt adds pytest)
 ├── RELEASE_NOTES.md    # What's new in this version, upgrade notes
@@ -267,10 +284,10 @@ tc-lab/
 ├── profiles/           # Default JSON impairment profiles (seed data)
 ├── templates/          # HTML templates (index.html, login.html)
 ├── tools/              # ui-preview.py, capture-screenshots.py (dev helpers)
-├── docs/               # deployment, upgrading, users & security, screenshots
-├── tests/              # pytest suite (security, users, managers)
-└── <STATE_DIR>/        # Writable state — defaults to the app dir; set
-    ├── config.json         #   TC_LAB_STATE_DIR to move onto a volume.
+├── docs/               # user guide, deployment, upgrading, users & security, images
+├── tests/              # pytest suite (security, users, managers, installer, help, …)
+└── <STATE_DIR>/        # Writable state — /var/lib/tc_lab when installed, the
+    ├── config.json         #   current directory when run by hand.
     ├── network_config.json #   All auto-managed. Never commit these.
     ├── state.json          #   Saved impairments, replayed on boot
     ├── users.json          #   bcrypt hashes, created on first run
@@ -295,7 +312,7 @@ tc-lab/
 ### TC Emulation — impairments per interface or per bridge
 ![TC Emulation](docs/img/02-tc-emulation.png)
 
-### Member controls — fine-tune each side of a bridge
+### Member controls — set each side of a bridge; the bridge shows the total
 ![Member controls](docs/img/09-member-controls.png)
 
 ### Interfaces & VLANs — physical NICs with their 802.1Q sub-interfaces
@@ -316,8 +333,14 @@ tc-lab/
 ### The same page for a `user` — structural controls hidden
 ![Bridge Manager as a user](docs/img/11-user-role.png)
 
-### Settings — password, idle timeout, theme
+### Settings — password, idle timeout, service port, theme
 ![Settings](docs/img/08-settings.png)
+
+### Help — this documentation, inside the dashboard
+![Help](docs/img/12-help.png)
+
+### About — the version you are running, and where it comes from
+![About](docs/img/13-about.png)
 
 ### Sign in
 ![Sign in](docs/img/01-login.png)
@@ -325,12 +348,12 @@ tc-lab/
 ### Light theme
 ![Light theme](docs/img/06-light-theme.png)
 
-<sub>Screenshots are generated from the UI itself, with demo interfaces, by
-<code>python3 tools/capture-screenshots.py</code> — re-run it after any UI change
-so they never go stale.</sub>
+*Screenshots are generated from the UI itself, with demo interfaces, by
+`python3 tools/capture-screenshots.py` — re-run it after any UI change so they never
+go stale.*
 
 ### Reference topology
-![Design Sample Diagram](https://github.com/user-attachments/assets/f0ad6610-5d49-46e8-9d68-17c4d95112ad)
+![Reference lab topology](docs/img/00-topology.png)
 
 ---
 

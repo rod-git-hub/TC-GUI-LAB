@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="csrf-token" content="{{ csrf_token() }}"/>
-<title>TC Lab v9.2.1</title>
+<title>TC Lab v{{ version }}</title>
 <style>
 /* ═══════════════════════════════════════════════════════════════════════
    TC Lab — design tokens
@@ -375,6 +375,37 @@ pre{font-family:var(--mono);font-size:.78rem;line-height:1.6;color:var(--text-2)
 #idle-bar .ic{color:var(--amber)}
 #idle-countdown{font-family:var(--mono);font-weight:700;color:var(--amber)}
 
+/* ── Help ─────────────────────────────────────────────────────────── */
+.nav-label-2{margin-top:14px}
+.help-nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.help-nav button{background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);
+  border-radius:999px;padding:6px 12px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit}
+.help-nav button:hover{color:var(--text);background:var(--surface-3)}
+.help-nav button.active{background:var(--brand-soft);color:var(--brand-ink);border-color:transparent}
+.help-doc{padding:22px 26px;line-height:1.6;font-size:.88rem;max-width:980px;overflow-wrap:anywhere}
+.help-doc h1{font-size:1.45rem;margin:0 0 14px;letter-spacing:-.3px}
+.help-doc h2{font-size:1.12rem;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.help-doc h3{font-size:.98rem;margin:20px 0 8px}
+.help-doc h4{font-size:.9rem;margin:16px 0 6px}
+.help-doc h1,.help-doc h2,.help-doc h3,.help-doc h4{scroll-margin-top:calc(var(--topbar-h) + 14px)}
+.help-doc p,.help-doc ul,.help-doc ol,.help-doc table,.help-doc pre,.help-doc blockquote{margin:0 0 12px}
+.help-doc ul,.help-doc ol{padding-left:22px}
+.help-doc li{margin:3px 0}
+.help-doc a{color:var(--accent-ink);text-decoration:none}
+.help-doc a:hover{text-decoration:underline}
+.help-doc code{font-family:var(--mono);font-size:.82em;background:var(--surface-3);padding:1px 5px;border-radius:4px}
+.help-doc pre{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);
+  padding:12px 14px;overflow-x:auto}
+.help-doc pre code{background:none;padding:0;font-size:.8rem}
+.help-doc table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}
+.help-doc th,.help-doc td{border:1px solid var(--border);padding:6px 10px;text-align:left;vertical-align:top}
+.help-doc th{background:var(--surface-2);font-weight:650}
+.help-doc img{max-width:100%;border:1px solid var(--border);border-radius:var(--r-md);margin:6px 0}
+.help-doc blockquote{border-left:3px solid var(--accent);padding:6px 12px;color:var(--text-2);
+  background:var(--accent-soft);border-radius:0 var(--r-sm) var(--r-sm) 0}
+.help-doc blockquote p:last-child{margin:0}
+.help-doc hr{border:none;border-top:1px solid var(--border);margin:24px 0}
+
 /* admin-only blocks stay hidden until whoami confirms the role
    (the server enforces this too — this only reduces clutter) */
 .admin-only{display:none}
@@ -439,6 +470,8 @@ body.is-admin .tab.admin-only{display:flex}
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
 <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
 <symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></symbol>
+<symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+<symbol id="i-server" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
 <symbol id="i-key" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></symbol>
 </defs></svg>
 
@@ -446,7 +479,7 @@ body.is-admin .tab.admin-only{display:flex}
   <div class="brand">
     <span class="brand-mark"><svg viewBox="0 0 24 24"><use href="#i-zap"/></svg></span>
     <span class="brand-name">TC Lab</span>
-    <span class="brand-ver">v9.2.1</span>
+    <span class="brand-ver">v{{ version }}</span>
   </div>
   <div class="statusbar">
     <span class="badge" id="b-if">– ifaces</span>
@@ -477,6 +510,11 @@ body.is-admin .tab.admin-only{display:flex}
       <div class="tab admin-only" data-t="users" onclick="switchTab('users')">
         <svg class="ic"><use href="#i-users"/></svg><span>Users</span></div>
     </div>
+    <div class="nav-label nav-label-2">Reference</div>
+    <div class="tabs">
+      <div class="tab" data-t="help" onclick="switchTab('help')">
+        <svg class="ic"><use href="#i-help"/></svg><span>Help</span></div>
+    </div>
     <div class="sidebar-foot">
       <div class="user-chip">
         <div class="avatar" id="side-avatar">–</div>
@@ -497,7 +535,7 @@ body.is-admin .tab.admin-only{display:flex}
         <div>
           <h2 class="page-title">TC Emulation</h2>
           <p class="page-sub">Apply latency, jitter, loss, duplication, corruption and rate limits.
-            Applying to a bridge splits the values across its members.</p>
+            A bridge shows the total of its members; applying to it splits the values across them.</p>
         </div>
         <div class="page-actions">
           <button class="bN" onclick="doRefresh(this)">
@@ -509,6 +547,7 @@ body.is-admin .tab.admin-only{display:flex}
 
     <!-- ── Interfaces / VLANs ─────────────────────────────────────── -->
     <div id="tab-vlans" class="panel">
+      <div id="mgmt-banner-vl" style="display:none;margin-bottom:14px"></div>
       <div class="page-hdr">
         <div>
           <h2 class="page-title">Interfaces &amp; VLANs</h2>
@@ -551,6 +590,7 @@ body.is-admin .tab.admin-only{display:flex}
 
     <!-- ── Bridge Manager ─────────────────────────────────────────── -->
     <div id="tab-bridges" class="panel">
+      <div id="mgmt-banner-br" style="display:none;margin-bottom:14px"></div>
       <div class="page-hdr">
         <div>
           <h2 class="page-title">Bridge Manager</h2>
@@ -702,6 +742,18 @@ body.is-admin .tab.admin-only{display:flex}
         <pre class="code-block">sudo tc-lab reset-admin-password</pre>
       </div>
     </div>
+    <!-- ── Help ─────────────────────────────────────────────────────── -->
+    <div id="tab-help" class="panel">
+      <div class="page-hdr">
+        <div>
+          <h2 class="page-title">Help</h2>
+          <p class="page-sub">The same documentation as the project's GitHub page, for the
+            version running here — and readable without internet access.</p>
+        </div>
+      </div>
+      <div class="help-nav" id="help-nav"></div>
+      <article class="card help-doc" id="help-doc"></article>
+    </div>
   </main>
 </div>
 
@@ -790,6 +842,43 @@ body.is-admin .tab.admin-only{display:flex}
         <div id="timeout-status" class="sb info"></div>
       </div>
 
+      <div class="msec" id="port-section" style="display:none">
+        <div class="msec-title"><svg class="ic"><use href="#i-server"/></svg>Service Port</div>
+        <p class="card-note" style="margin-bottom:12px">
+          The port the dashboard listens on (1024–65535). Changing it restarts TC Lab
+          — impairments keep running — and moves this page to the new address.
+          If a firewall only allows the current port you will lose access; on the host,
+          <b>sudo tc-lab set-port</b> puts it back.
+        </p>
+        <div class="field-row">
+          <div style="flex:1;min-width:150px"><label for="port-val">Port</label>
+            <input type="number" id="port-val" min="1024" max="65535"/></div>
+          <button class="bG" onclick="doSavePort()">
+            <svg class="ic"><use href="#i-save"/></svg>Change port</button>
+        </div>
+        <div id="port-status" class="sb info"></div>
+      </div>
+
+      <div class="msec" id="mgmt-section" style="display:none">
+        <div class="msec-title"><svg class="ic"><use href="#i-lock"/></svg>Management Interface</div>
+        <p class="card-note" style="margin-bottom:12px">
+          The interface you reach this dashboard (and SSH) through. Adding it to a bridge
+          wipes its IP address; bringing it down or impairing it cuts off access.
+          <b>Protected</b>, TC Lab refuses VLANs on it, bridge membership and bringing it
+          down. Unprotected, those are allowed at your own risk. Either way, nothing
+          involving it is kept after a reboot.
+        </p>
+        <div class="field-row">
+          <div style="flex:1;min-width:150px"><label for="mgmt-iface">Interface</label>
+            <select id="mgmt-iface"></select></div>
+          <label style="display:flex;align-items:center;gap:6px;align-self:flex-end;padding-bottom:8px">
+            <input type="checkbox" id="mgmt-lock"/>Protect it</label>
+          <button class="bG" onclick="doSaveMgmt()">
+            <svg class="ic"><use href="#i-save"/></svg>Save</button>
+        </div>
+        <div id="mgmt-status" class="sb info"></div>
+      </div>
+
       <div class="msec">
         <div class="theme-row">
           <div class="msec-title" style="margin:0"><svg class="ic"><use href="#i-sun"/></svg>Appearance</div>
@@ -821,7 +910,27 @@ body.is-admin .tab.admin-only{display:flex}
 </div>
 
 <script>
-let ifaces=[],bridges={},ifMeta={},unbridged=[],tcState={},profiles={},labels={};
+let ifaces=[],bridges={},ifMeta={},unbridged=[],tcState={},profiles={},labels={},totals={};
+let helpIndex=null,helpPage=null;      // Help: page list from the server, page shown
+let mgmt={interface:'',locked:false,related:[]};   // the management interface, from the server
+// Using the management interface can cut off access to this dashboard. Locked:
+// the server refuses it, so pickers leave it out. Unlocked: allowed after a
+// warning. Impairing it is never blocked, but always warned about.
+function isMgmt(n){return !!mgmt.interface&&(mgmt.related.includes(n)||String(n).startsWith(mgmt.interface+'.'));}
+function mgmtOk(p){return !(mgmt.locked&&isMgmt(p&&p.name!==undefined?p.name:p));}
+function mgmtRisk(n,what,always){
+  if(!isMgmt(n)||(mgmt.locked&&!always)) return true;
+  return confirm(`${n} is the management interface — how you reach this dashboard (and SSH).\n\n`
+    +`${what} can cut off your access immediately.\n\n`
+    +`It is never kept after a reboot: the interface comes back normal then.\n\nContinue at your own risk?`);}
+function renderMgmtBanner(){
+  const m=mgmt.interface
+    ?(mgmt.locked
+      ?['info',`🔒 ${esc(mgmt.interface)} is the management interface. It is protected, so it is left out of these lists.`]
+      :['warn',`⚠ The management interface, ${esc(mgmt.interface)}, is not protected. Using it here can cut off your access. Nothing involving it is kept after a reboot.`])
+    :['warn','⚠ No management interface is chosen. Choose it in Settings → Management Interface so TC Lab can keep it safe.'];
+  ['mgmt-banner-vl','mgmt-banner-br'].forEach(id=>{const e=document.getElementById(id);
+    if(e){e.className='wbanner '+m[0];e.innerHTML=m[1];e.style.display='';}});}
 let vlanData={vlans:[],physical:[]};
 let idleTimeout=30, lastActivity=Date.now(), idleWarningShown=false;
 
@@ -850,6 +959,7 @@ setInterval(()=>{
   }
 },4000);
 
+let svcPort=null;
 async function loadConfig(){
   const r=await api('/api/config');
   if(r&&r.idle_timeout_minutes!==undefined){
@@ -857,7 +967,32 @@ async function loadConfig(){
     const el=document.getElementById('timeout-val');
     if(el) el.value=idleTimeout;
   }
+  if(r&&r.port!==undefined){
+    svcPort=r.port;
+    const el=document.getElementById('port-val');
+    if(el) el.value=svcPort;
+  }
+  const sel=document.getElementById('mgmt-iface'),chk=document.getElementById('mgmt-lock');
+  if(r&&sel&&chk){
+    let cur=r.management_interface||'';
+    sb('mgmt-status','','info');
+    if(!cur){
+      const g=await api('/api/config/mgmt-suggest');
+      if(g&&g.interface){cur=g.interface;
+        sb('mgmt-status',`Detected ${cur} — the interface your browser uses. Check it, then Save.`,'info');}}
+    const names=ifaces.filter(i=>!bridges[i]);
+    if(cur&&!names.includes(cur)) names.unshift(cur);
+    sel.innerHTML='<option value="">— none —</option>'+names.map(i=>
+      `<option${i===cur?' selected':''}>${esc(i)}</option>`).join('');
+    chk.checked=r.protect_management!==false;
+  }
 }
+async function doSaveMgmt(){
+  const iface=document.getElementById('mgmt-iface').value,lock=document.getElementById('mgmt-lock').checked;
+  if(iface&&!lock&&!confirm(`Leave ${iface} unprotected?\n\nVLANs on it, adding it to a bridge and bringing it down will be allowed — any of them can cut off your access. Nothing involving it is kept after a reboot.`))return;
+  const r=await api('/api/config','POST',{management_interface:iface,protect_management:lock});
+  if(r.ok){sb('mgmt-status',iface?`✔ ${iface} ${lock?'protected':'NOT protected'}`:'✔ Saved (none chosen)','ok');loadAll();}
+  else sb('mgmt-status','✘ '+(r.error||r.stderr||'Error'),'err');}
 
 // ── API helper ─────────────────────────────────────────────────────────────
 const CSRF=document.querySelector('meta[name="csrf-token"]')?.content||'';
@@ -884,6 +1019,7 @@ function switchTab(name){
   if(name==='profiles') renderProfiles();
   if(name==='vlans') loadVlanTab();
   if(name==='users') loadUsers();
+  if(name==='help') openHelp();
 }
 
 async function reloadBridges(evt){
@@ -907,7 +1043,7 @@ async function reloadVlans(evt){
     const vlanNames=new Set((d.vlans||[]).map(v=>v.name));
     const brNames=new Set(d.bridges||[]);
     const eligible=(d.physical||[]).filter(p=>!vlanNames.has(p.name)&&!brNames.has(p.name)&&!p.name.includes('.'));
-    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';
+    ps.innerHTML=eligible.length?eligible.filter(mgmtOk).map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';
   }
   const d2=await api('/api/interfaces');
   if(d2){bridges=d2.bridges||{};unbridged=d2.unbridged||[];ifMeta=d2.meta||{};ifaces=d2.interfaces||[];}
@@ -919,7 +1055,8 @@ function buildCard(iface){
   const id=iface.replace(/[^a-z0-9]/gi,'_');
   const meta=ifMeta[iface]||{};
   const isBr=meta.is_bridge,isMb=meta.is_member,up=meta.state==='up';
-  const cur=tcState[iface]||{},v=k=>(cur[k]!==undefined?cur[k]:0);
+  // A bridge has no impairment of its own: it shows the total of its members.
+  const cur=(isBr?totals[iface]:tcState[iface])||{},v=k=>(cur[k]!==undefined?cur[k]:0);
   const hasTC=Object.values(cur).some(x=>x>0);
   const lbl=labels[iface]||'';
   const dot=isBr?'dot-br':(up?'dot-up':'dot-dn');
@@ -929,12 +1066,16 @@ function buildCard(iface){
   if(isMb) tags+=`<span class="tag tB">→${esc(meta.master)}</span>`;
   if(!up)  tags+=`<span class="tag tR">down</span>`;
   if(hasTC)tags+=`<span class="tag tG">● tc active</span>`;
+  if(isMgmt(iface))tags+=`<span class="tag tR" title="Management interface">MGMT</span>`;
   let banner='';
   if(isBr){const mbs=(bridges[iface]||{}).members||[],n=mbs.length||2;
-    banner=`<div class="wbanner warn">Apply splits values across ${n} member${n!==1?'s':''}
-      — e.g. a 150&nbsp;ms target becomes ${(150/n).toFixed(0)}&nbsp;ms each.</div>`;}
+    banner=`<div class="wbanner warn">Shows the <b>${n===2?'round-trip ':''}total</b> of its
+      ${n} member${n!==1?'s':''}. Apply splits it equally — 50&nbsp;ms becomes
+      ${+(50/n).toFixed(2)}&nbsp;ms on each — replacing values set per member.</div>`;}
   else if(isMb){banner=`<div class="wbanner info">Member of <b>${esc(meta.master)}</b>
-      — shows the split value applied by the bridge.</div>`;}
+      — changes here apply to this member only; the bridge shows the new total.</div>`;}
+  if(isMgmt(iface)&&!isBr) banner+=`<div class="wbanner warn">Management interface — impairing it
+      slows or cuts your own access. Impairments on it are not kept after a reboot.</div>`;
   const fld=(k,lab,unit,mx,st)=>`<div class="field"><label for="${id}_${k}">${lab}</label>
       <div class="input-wrap"><input type="number" id="${id}_${k}" min="0" max="${mx}"${st?` step="${st}"`:''}
         value="${v({lat:'latency_ms',jit:'jitter_ms',loss:'loss_pct',dup:'duplicate_pct',
@@ -1014,9 +1155,19 @@ function updateLiveBadge(){
   return liveCnt;
 }
 
+// Cards with values typed but not yet applied. The page redraws every 20 s;
+// without this, whatever you were typing silently reverted to the old value.
+const editing=new Set();
+document.addEventListener('input',e=>{
+  const card=e.target.closest('.iface-card');
+  if(card&&e.target.type==='number') editing.add(card.id);});
+
 // ── TC Grid — bridge card in grid + drawer for members ─────────────────────
 function renderTCGrid(){
   const grid=document.getElementById('iface-grid');
+  const typed={};
+  editing.forEach(cid=>document.querySelectorAll(`#${cid} input[type=number]`)
+    .forEach(i=>{typed[i.id]=i.value;}));
   let html='';const done=new Set();
 
   // 1. Bridge groups — 2-per-row grid; members → drawer
@@ -1029,13 +1180,10 @@ function renderTCGrid(){
       const members=(info.members||[]).filter(m=>ifaces.includes(m));
       members.forEach(m=>done.add(m));
       const brState=info.state==='up'?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>';
-      const liveTC=(tcState[br]||members.some(m=>Object.values(tcState[m]||{}).some(x=>x>0)))
+      const liveTC=members.some(m=>Object.values(tcState[m]||{}).some(x=>x>0))
         ?'<span class="tag tG">● tc active</span>':'';
       const memberChips=members.length
-        ?members.map(m=>{
-            const hasTC=Object.values(tcState[m]||{}).some(x=>x>0);
-            return `<span class="tag ${hasTC?'tG':'tB'}" style="font-size:.68rem">${esc(m)}${hasTC?' ●':''}</span>`;
-          }).join('')
+        ?members.map(memberChip).join('')
         :'<span class="muted" style="font-size:.72rem">no members</span>';
       html+=`<div class="bridge-group">
         <div class="bridge-group-hdr">
@@ -1064,8 +1212,21 @@ function renderTCGrid(){
   }
   if(!html) html='<div class="empty">No interfaces detected.</div>';
   grid.innerHTML=html;
+  for(const [id,val] of Object.entries(typed)){
+    const e=document.getElementById(id); if(e) e.value=val;}
 }
 
+// A member's tag on its bridge: its name, and its latency when impaired.
+function memberChip(m){
+  const c=tcState[m]||{},hasTC=Object.values(c).some(x=>x>0),lat=Number(c.latency_ms)||0;
+  return `<span class="tag ${hasTC?'tG':'tB'}" id="mchip-${m.replace(/[^a-z0-9]/gi,'_')}"
+    style="font-size:.68rem">${esc(m)}${hasTC?' ●'+(lat?` ${lat}&nbsp;ms`:''):''}</span>`;}
+// After a bridge or one of its members changes: show the new total and chips.
+function refreshBridge(br,total){
+  if(total){totals[br]=total;setConf(br,total);}
+  ((bridges[br]||{}).members||[]).forEach(m=>{
+    const el=document.getElementById('mchip-'+m.replace(/[^a-z0-9]/gi,'_'));
+    if(el) el.outerHTML=memberChip(m);});}
 function getConf(iface){
   const id=iface.replace(/[^a-z0-9]/gi,'_');
   const v=k=>parseFloat(document.getElementById(`${id}_${k}`)?.value)||0;
@@ -1084,29 +1245,38 @@ async function saveLabel(iface){
   labels[iface]=el.value.trim();}
 async function doApply(iface){
   const id=iface.replace(/[^a-z0-9]/gi,'_');
+  if(!mgmtRisk(iface,'Impairing it',true))return;
+  editing.delete(`card-${id}`);
   const conf=getConf(iface); sb(`sb-${id}`,'Applying…','info');
   const r=await api(`/api/apply/${iface}`,'POST',conf);
   if(r.is_bridge){
-    if(r.ok){tcState[iface]=conf;
-      const sc=r.split_cfg||{},sn=sc.latency_ms?` (${sc.latency_ms}ms/member)`:'';
-      sb(`sb-${id}`,`✔ Applied to: ${(r.members||[]).join(', ')}${sn}`,'ok');
+    if(r.ok){
+      const sc=r.split_cfg||{},sn=sc.latency_ms?` (${sc.latency_ms} ms each)`:'';
       (r.members||[]).forEach(m=>{tcState[m]=sc;setConf(m,sc);
-        sb(`sb-${m.replace(/[^a-z0-9]/gi,'_')}`,`✔ From ${iface}${sn}`,'ok');});}
+        sb(`sb-${m.replace(/[^a-z0-9]/gi,'_')}`,`✔ From ${iface}${sn}`,'ok');});
+      sb(`sb-${id}`,`✔ Applied to: ${(r.members||[]).join(', ')}${sn}`,'ok');}
     else sb(`sb-${id}`,'✘ '+(r.stderr||'No members?'),'err');
+    refreshBridge(iface,r.total);
   }else{
-    if(r.ok){tcState[iface]=conf;sb(`sb-${id}`,'✔ Applied','ok');}
+    if(r.ok){tcState[iface]=conf;sb(`sb-${id}`,'✔ Applied','ok');
+      if(r.bridge){refreshBridge(r.bridge,r.total);
+        sb(`sb-${r.bridge.replace(/[^a-z0-9]/gi,'_')}`,`↻ Total updated from ${iface}`,'info');}}
     else sb(`sb-${id}`,'✘ '+(r.stderr||r.tc_cmd||'Error'),'err');}updateLiveBadge();}
 async function doReset(iface){
   const id=iface.replace(/[^a-z0-9]/gi,'_');
+  editing.delete(`card-${id}`);
   sb(`sb-${id}`,'Resetting…','info');const r=await api(`/api/reset/${iface}`,'POST');
   if(r.is_bridge){
-    if(r.ok){delete tcState[iface];setConf(iface,{});
+    if(r.ok){
       Object.keys(r.members||{}).forEach(m=>{delete tcState[m];setConf(m,{});
         sb(`sb-${m.replace(/[^a-z0-9]/gi,'_')}`,'✔ Reset','ok');});
       sb(`sb-${id}`,'✔ Members reset','ok');}
     else sb(`sb-${id}`,'✘ Error','err');
+    refreshBridge(iface,r.total);
   }else{
-    if(r.ok){delete tcState[iface];setConf(iface,{});sb(`sb-${id}`,'✔ Clean','ok');}
+    if(r.ok){delete tcState[iface];setConf(iface,{});sb(`sb-${id}`,'✔ Clean','ok');
+      if(r.bridge){refreshBridge(r.bridge,r.total);
+        sb(`sb-${r.bridge.replace(/[^a-z0-9]/gi,'_')}`,`↻ Total updated from ${iface}`,'info');}}
     else sb(`sb-${id}`,'✘ '+(r.stderr||'Error'),'err');}updateLiveBadge();}
 async function showStats(iface){
   document.getElementById('m-title').textContent='tc — '+iface;
@@ -1146,7 +1316,7 @@ function buildVlanTree(physical,vlans,bridgeNames){
       : `<span class="tag tB">Physical NIC</span>`;
     const stTag = s=>s?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>';
     rows+=`<tr class="phy-row">
-      <td><span class="iface-name">${esc(p.name)}</span></td>
+      <td><span class="iface-name">${esc(p.name)}</span>${isMgmt(p.name)?' <span class="tag tR" title="Management interface">MGMT</span>':''}</td>
       <td>${typeTag} ${toggle}</td>
       <td>${stTag(up)}</td>
       <td class="muted mono">${esc(p.mtu)}</td>
@@ -1202,7 +1372,7 @@ async function loadVlanTab(){
     !p.name.includes('.')       // not a sub-interface by name
   );
   ps.innerHTML=eligible.length
-    ?eligible.map(p=>`<option>${esc(p.name)}</option>`).join('')
+    ?eligible.filter(mgmtOk).map(p=>`<option>${esc(p.name)}</option>`).join('')
     :'<option disabled>No physical NICs found</option>';}
 async function doCreateVlan(){
   const parent=document.getElementById('vl-parent').value;
@@ -1210,6 +1380,7 @@ async function doCreateVlan(){
   const name=document.getElementById('vl-name').value.trim();
   if(!parent){sb('vl-status','Select parent','err');return;}
   if(vid<1||vid>4094){sb('vl-status','VLAN ID 1-4094','err');return;}
+  if(!mgmtRisk(parent,'Creating a VLAN on it'))return;
   sb('vl-status','Creating…','info');
   const r=await api('/api/vlans','POST',{parent,vlan_id:vid,name:name||undefined});
   if(r.ok){
@@ -1226,7 +1397,10 @@ async function doDelVlan(name){
 async function doVlanUp(name,up){
   await api(`/api/vlans/${name}/up`,'POST',{up}); loadVlanTab();}
 async function doIfUp(name,up){
-  await api(`/api/iface/${name}/up`,'POST',{up}); loadVlanTab();}
+  if(!up&&!mgmtRisk(name,'Bringing it down'))return;
+  const r=await api(`/api/iface/${name}/up`,'POST',{up});
+  if(r&&r.ok===false) alert(r.stderr||'Refused');
+  loadVlanTab();}
 async function showVlanStats(name){
   document.getElementById('m-title').textContent='Stats — '+name;
   document.getElementById('m-body').textContent='Loading…';
@@ -1239,7 +1413,7 @@ function renderBrTab(){
   ['nb-if1','nb-if2'].forEach(sid=>{
     const sel=document.getElementById(sid),cur=sel.value;
     sel.innerHTML='<option value="">— none —</option>';
-    unbridged.forEach(i=>sel.innerHTML+=`<option${i===cur?' selected':''}>${esc(i)}</option>`);});
+    unbridged.filter(mgmtOk).forEach(i=>sel.innerHTML+=`<option${i===cur?' selected':''}>${esc(i)}</option>`);});
   const tbody=document.getElementById('br-tbody');const entries=Object.entries(bridges);
   if(!entries.length){tbody.innerHTML='<tr><td colspan="4" class="empty">No bridges configured yet.</td></tr>';return;}
   const admin=ROLE==='admin';
@@ -1254,7 +1428,7 @@ function renderBrTab(){
         ${admin?`<button class="bG btn-xs" title="Bring up" onclick="doBrUp('${br}',true)"><svg class="ic"><use href="#i-up"/></svg></button>
         <button class="bR btn-xs" title="Bring down" onclick="doBrUp('${br}',false)"><svg class="ic"><use href="#i-down"/></svg></button>`:''}</div></td>
       <td><div class="actions">${mbHtml||'<span class="muted">none</span>'}
-        ${admin?`<button class="bB btn-xs" title="Add member" onclick="promptAddMember('${br}')"><svg class="ic"><use href="#i-plus"/></svg></button>`:''}</div></td>
+        ${admin&&mbs.length<2?`<button class="bB btn-xs" title="Add member" onclick="promptAddMember('${br}')"><svg class="ic"><use href="#i-plus"/></svg></button>`:''}</div></td>
       <td><div class="actions">
         <button class="bY btn-xs" title="Bridge statistics" onclick="showBrStats('${br}')"><svg class="ic"><use href="#i-chart"/></svg></button>
         ${admin?`<button class="bR btn-xs" title="Delete bridge" onclick="doDelBridge('${br}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:''}</div></td></tr>`;
@@ -1269,12 +1443,13 @@ async function _refreshVl(){
     document.getElementById('phy-tbody').innerHTML=buildVlanTree(d.physical||[],d.vlans||[],d.bridges||[]);
     const ps=document.getElementById('vl-parent');const vlanNames=new Set((d.vlans||[]).map(v=>v.name));const brNames=new Set(d.bridges||[]);
     const eligible=(d.physical||[]).filter(p=>!vlanNames.has(p.name)&&!brNames.has(p.name)&&!p.name.includes('.'));
-    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';}}
+    ps.innerHTML=eligible.length?eligible.filter(mgmtOk).map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';}}
 async function doCreateBridge(){
   const name=document.getElementById('nb-name').value.trim();
   const if1=document.getElementById('nb-if1').value,if2=document.getElementById('nb-if2').value;
   const stp=document.getElementById('nb-stp').checked;
   if(!name){sb('nb-status','Enter name','err');return;}
+  for(const i of [if1,if2]) if(i&&!mgmtRisk(i,'Adding it to a bridge (which removes its IP address)'))return;
   sb('nb-status','Creating…','info');
   const r=await api(`/api/bridges/${name}`,'POST',{stp});
   if(!r.ok){sb('nb-status','✘ '+r.stderr,'err');return;}
@@ -1293,8 +1468,8 @@ async function doDelBridge(name){
 async function doBrUp(name,up){
   await api(`/api/bridges/${name}/up`,'POST',{up});await _refreshBr();}
 async function promptAddMember(bridge){
-  const iface=prompt(`Add to ${bridge}\nAvailable: ${unbridged.join(', ')}`);
-  if(!iface)return;
+  const iface=prompt(`Add to ${bridge}\nAvailable: ${unbridged.filter(mgmtOk).join(', ')}`);
+  if(!iface||!mgmtRisk(iface,'Adding it to a bridge (which removes its IP address)'))return;
   const r=await api(`/api/bridges/${bridge}/members`,'POST',{iface});
   sb('br-status',r.ok?`✔ ${iface}→${bridge}`:'✘ '+r.stderr,r.ok?'ok':'err');
   await _refreshBr();}
@@ -1350,9 +1525,12 @@ async function openSettings(){
   document.getElementById('set-avatar').textContent=(r.username||'?').charAt(0).toUpperCase();
   ['pw-cur','pw-new','pw-cfm'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   sb('pw-status','','info');
-  // Show timeout section only for admin
+  // Timeout and port sections: admin only (the server enforces it too)
   if(r.role==='admin'){
     document.getElementById('timeout-section').style.display='block';
+    document.getElementById('port-section').style.display='block';
+    document.getElementById('mgmt-section').style.display='block';
+    sb('port-status','','info');
     await loadConfig();
   }
   document.getElementById('set-modal').classList.add('show');}
@@ -1374,11 +1552,38 @@ async function doSaveTimeout(){
   if(r.ok){idleTimeout=v;sb('timeout-status',`✔ Timeout set to ${v===0?'disabled':v+'min'}`,'ok');}
   else sb('timeout-status','✘ '+(r.error||r.stderr||'Error'),'err');}
 
+const pause=ms=>new Promise(res=>setTimeout(res,ms));
+async function doSavePort(){
+  const v=parseInt(document.getElementById('port-val').value,10);
+  if(!(v>=1024&&v<=65535)){sb('port-status','Enter a port from 1024 to 65535','err');return;}
+  if(v===svcPort){sb('port-status',`Already on port ${v}`,'info');return;}
+  const u=new URL(location.href);u.port=String(v);u.pathname='/';u.search='';u.hash='';
+  if(!confirm(`Move TC Lab to port ${v}?\n\n`
+    +`It restarts (a few seconds; impairments keep running) and this page moves to:\n${u.href}\n\n`
+    +`If a firewall only allows port ${svcPort}, you will lose access. To undo it, on the host:\n`
+    +`  sudo tc-lab set-port ${svcPort}\n  sudo systemctl restart tc_lab`))return;
+  sb('port-status','Saving…','info');
+  const r=await api('/api/config','POST',{port:v});
+  if(!r.ok){sb('port-status','✘ '+(r.error||r.stderr||'Error'),'err');return;}
+  if(!r.restarting){svcPort=v;sb('port-status',`✔ Port ${v}`,'ok');return;}
+  sb('port-status',`Restarting on port ${v} — this page will move to ${u.href}`,'info');
+  // The page's security policy only lets it talk to its own address, so it
+  // cannot ask the new one whether it is up. Wait for this address to go
+  // quiet (TC Lab has restarted), give the new one a moment, then follow.
+  const t0=Date.now();
+  while(Date.now()-t0<15000){
+    await pause(500);
+    try{await fetch('/favicon.ico',{cache:'no-store'});}catch(e){break;}
+  }
+  await pause(5000);
+  location.href=u.href;}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 async function loadAll(){
   const d=await api('/api/interfaces');if(!d) return;
   ifaces=d.interfaces||[];bridges=d.bridges||{};ifMeta=d.meta||{};
-  unbridged=d.unbridged||[];tcState=d.state||{};labels=d.labels||{};
+  unbridged=d.unbridged||[];tcState=d.state||{};labels=d.labels||{};totals=d.totals||{};
+  mgmt=d.mgmt||mgmt;renderMgmtBanner();
   const brCnt=Object.keys(bridges).length;
   // Count only real interface-level tc entries:
   //   exclude bridge keys (their tc is applied to members, not the bridge itself)
@@ -1550,6 +1755,52 @@ async function doRefresh(btn){
 }
 
 loadRole();
+// ── Help ──────────────────────────────────────────────────────────────────
+// Pages are rendered by the server from the Markdown shipped with this install.
+async function openHelp(page,anchor){
+  if(!helpIndex){const d=await api('/api/help');if(!d||!d.pages)return;helpIndex=d;}
+  page=page||helpPage||'guide';
+  const doc=document.getElementById('help-doc');
+  if(page!==helpPage){
+    helpPage=page;renderHelpNav();
+    if(page==='about') doc.innerHTML=aboutHtml();
+    else{
+      doc.innerHTML='<p class="muted">Loading…</p>';
+      const r=await api(`/api/help/${encodeURIComponent(page)}`);
+      doc.innerHTML=r&&r.ok?r.html
+        :`<p class="muted">${esc((r&&r.error)||'This page could not be loaded.')}</p>`;
+    }
+  }
+  // Scroll the page itself (scrollIntoView would also scroll any frame it sits in).
+  const target=anchor&&document.getElementById('h-'+anchor);
+  window.scrollTo({top:target?target.getBoundingClientRect().top+window.scrollY-70:0});}
+function renderHelpNav(){
+  const pages=[...helpIndex.pages,{id:'about',title:'About'}];
+  document.getElementById('help-nav').innerHTML=pages.map(p=>
+    `<button class="${p.id===helpPage?'active':''}" onclick="openHelp('${p.id}')">${esc(p.title)}</button>`).join('');}
+function aboutHtml(){
+  const v=esc(helpIndex.version),u=esc(helpIndex.project_url);
+  const out=(href,text)=>`<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  return `<h1>About TC Lab</h1>
+  <p>TC Lab puts real Linux <code>tc</code>/<code>netem</code> impairments — latency, jitter,
+    loss, duplication, corruption and rate limits — behind a web dashboard, for testing
+    SD-WAN and other network equipment in a lab.</p>
+  <table>
+    <tr><th>Version</th><td><b>v${v}</b></td></tr>
+    <tr><th>Project</th><td>${out(u,u)}</td></tr>
+    <tr><th>This release</th><td>${out(`${u}/releases/tag/v${v}`,'Release page on GitHub')}
+      · <a href="#" data-help="whatsnew">What's new</a></td></tr>
+    <tr><th>Newer versions</th><td>${out(`${u}/releases`,'All releases')} — to install one, see
+      <a href="#" data-help="upgrade">Upgrading</a></td></tr>
+    <tr><th>Security issues</th><td>Please report them privately — see the
+      <a href="#" data-help="security" data-anchor="reporting-a-vulnerability">Security policy</a></td></tr>
+    <tr><th>License</th><td>MIT — ${out(`${u}/blob/v${v}/LICENSE`,'LICENSE')}</td></tr>
+  </table>
+  <p class="muted">Links to GitHub need internet access; everything else in Help comes from this host.</p>`;}
+document.getElementById('help-doc').addEventListener('click',e=>{
+  const a=e.target.closest('a[data-help]');if(!a)return;
+  e.preventDefault();openHelp(a.dataset.help,a.dataset.anchor);});
+
 loadAll();
 loadConfig();
 setInterval(loadAll,20000);

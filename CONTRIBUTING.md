@@ -45,6 +45,12 @@ would really change the machine (one would create a bridge named `br0`).
 Add a test with any change to validation, authentication, permissions or the
 installer — and check that it **fails** without your fix.
 
+`tests/test_installer.py` runs the real `setup.sh` as "root" inside a user namespace
+(`unshare -r`), against scratch directories and with system commands stubbed, so it
+changes nothing on the machine. It is skipped where unprivileged user namespaces or
+`rsync` are unavailable. `tests/test_help.py` fails if a link between the documents
+stops landing on a real heading — run it after editing any `.md` file.
+
 ## Working on the dashboard
 
 The UI can be rendered with demo data and no backend:
@@ -58,7 +64,8 @@ python3 -m http.server 8777
 ```
 
 Then open `http://localhost:8777/_preview.html`. Passing `user` shows what a
-non-admin sees.
+non-admin sees. Run it with the project's virtualenv (`.venv/bin/python`) to fill the
+Help pages — they need the `Markdown` package.
 
 After any visible change, regenerate the screenshots in `docs/img/`:
 
@@ -81,12 +88,18 @@ It needs Chromium (or Chrome), and Pillow to keep the images small.
   that the two agree — change both or neither.
 - **Accounts** change only through the helpers in `auth.py`, which the dashboard and
   the `tc-lab` command share, so their rules cannot drift apart.
+- **The service writes only its state directory** (`STATE_DIR`, `/var/lib/tc_lab` when
+  installed). Everything else is read-only to it, so any new file the app writes must
+  go under `STATE_DIR`.
+- **Help** renders the Markdown documents shipped with the install (`help_docs.py`).
+  Write links between them as relative paths (`deployment.md#4-configuration`) and put
+  images in `docs/img/`; raw HTML is shown as text.
 
 ## Releasing a version
 
-1. **Bump the version** in all four places: `app.py` (first line), the `"version"`
-   in `api_export()`, and the `<title>` and `brand-ver` badge in
-   `templates/index.html`. `tc-lab --version` follows `app.py` automatically.
+1. **Bump the version** in `app.py`'s first line — the only place it is written. The
+   page title and badge, config exports, Help → About and `tc-lab --version` all
+   read it from there.
 2. **Update `CHANGELOG.md`** (detailed, in Security / Added / Changed / Fixed /
    Removed order) and **`RELEASE_NOTES.md`** (the plain-language summary).
 3. **Regenerate the screenshots** if anything visible changed.

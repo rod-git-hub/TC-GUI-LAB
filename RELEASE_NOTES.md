@@ -1,5 +1,135 @@
 # TC Lab — Release Notes
 
+## v9.3 — 29 September 2026
+
+v9.3 takes TC Lab off root, lets you move the dashboard to another port, makes a
+bridge show what its path really has, and puts the documentation inside the
+dashboard. The impairment engine is unchanged.
+
+For the itemised list see [CHANGELOG.md](CHANGELOG.md); for the upgrade itself,
+[docs/upgrading.md](docs/upgrading.md#coming-from-v92-or-v921).
+
+### Highlights
+
+- **No longer runs as root.** The service runs as its own user, `tc-lab`, with only
+  the one network capability it needs, and can write only `/var/lib/tc_lab`.
+- **Change the port** from Settings, the installer, or the `tc-lab` command.
+- **Bridges show their total.** Set 50 ms on a bridge and each member gets 25 ms;
+  set the members to 10 ms and 40 ms and the bridge shows 50 ms.
+- **The management interface is protected** — TC Lab will not wipe its address by
+  bridging it, and nothing involving it survives a reboot.
+- **Help and About** in the sidebar — this documentation, for the version you are
+  running, readable without internet access.
+
+### Before you upgrade
+
+1. **TC Lab's state moves** from `/opt/tc_lab` to **`/var/lib/tc_lab`** — accounts,
+   `config.json`, certificate, saved impairments, topology, labels and profiles. The
+   installer does it and checks every file. Use the new paths afterwards, for
+   example `/var/lib/tc_lab/config.json`.
+2. **Rolling back to v9.2.x restores v9.2's layout too** — root, and the state in
+   `/opt/tc_lab` as it was before the upgrade.
+3. **A port below 1024** (such as 443) set under v9.2 cannot be used any more; TC Lab
+   falls back to 5000 and tells you.
+4. **Creating a bridge no longer switches on IP forwarding** for the whole host. If
+   you also route traffic through this host, set `net.ipv4.ip_forward` yourself.
+5. **The installer asks about the management interface** — press Enter to protect it.
+6. **Hard-refresh your browser** (Ctrl-Shift-R) after upgrading, as always.
+
+### Upgrading
+
+```bash
+cd /path/to/TC-GUI-LAB && git pull && sudo bash setup.sh
+```
+
+Undo it with `sudo bash setup.sh --rollback`.
+
+### What's new
+
+#### TC Lab no longer runs as root
+
+The service needs network-admin rights for `tc` and `ip` — not root. It now runs as
+the system user `tc-lab`, holding exactly one capability, `CAP_NET_ADMIN`, and the
+whole system is read-only to it except its state directory. (`CAP_NET_RAW`, which
+v9.2 also held, turned out not to be needed and is gone.)
+
+| | v9.2 | v9.3 |
+|---|---|---|
+| Runs as | root, bounded to 2 capabilities | its own user, `tc-lab`, with 1 — `CAP_NET_ADMIN` |
+| Can write | most of the system outside `/usr`, `/boot` and `/etc` — `/var` included | only `/var/lib/tc_lab` (and a private, throwaway `/tmp`) |
+| `systemd-analyze security` | 5.9 MEDIUM | 1.8 OK |
+
+Under v9.2, a compromised app could write root-owned files under `/var` that
+something unconfined later runs as full root. That is no longer possible; what is
+left is described in [SECURITY.md](SECURITY.md).
+
+#### The dashboard port
+
+Settings → **Service Port** (admins): pick a port from 1024 to 65535 and TC Lab
+restarts on it within a few seconds — impairments keep running — while the page
+follows to the new address. Also `sudo bash setup.sh --port 8443`, and
+`sudo tc-lab set-port 5000` to get back in if a firewall blocks the new port. See
+[Changing the port](docs/deployment.md#changing-the-port).
+
+#### Bridges show the total of their members
+
+A bridge has no impairment of its own; its members carry it, one direction each.
+The bridge card now always shows their round-trip total, worked out from the
+members, instead of a value saved when Apply was last pressed on the bridge. Apply
+on the bridge still splits the value equally across the members. Each member's tag
+shows its latency.
+
+A bridge has **at most two members** — one per side of the lab path.
+
+#### The management interface
+
+Adding an interface to a bridge removes its IP address, so bridging the one you manage
+the host through cuts you off — and TC Lab used to rebuild that bridge after every
+reboot. Now the management interface is marked **MGMT** and can be **protected**: VLANs
+on it, bridging it and bringing it down are refused. The installer asks (default: yes);
+change it in Settings → Management Interface. Unprotected, it can be used after a
+warning, at your own risk. Either way, nothing involving it — VLANs, bridges,
+impairments — is kept after a reboot.
+
+#### Help and About
+
+**Help** in the sidebar has the README, user guide, installation, upgrading,
+security, release notes and changelog — the same files GitHub shows, shipped with
+TC Lab, so they always match the version you run. **About** shows that version and
+links to the project, its releases, and how to report a security issue.
+
+#### Fixes
+
+- Impairment values typed on a card but not yet applied were thrown away by the
+  page's automatic refresh every 20 seconds — on a bridge it looked as if Apply had
+  done nothing. They are now kept until you Apply or Reset.
+- Your edits to a built-in profile are no longer overwritten by upgrades.
+- `setup.sh --list-backups` showed versions as `.v9.2.1`.
+
+### How this release was tested
+
+- **315 automated tests** (up from 157), including the real installer run in a
+  sandbox — a fresh install; an upgrade from v9.2.1, rollback, and upgrading again,
+  with every state file checked byte for byte — the real boot-restore script, and a
+  check that every link between the documents lands on a real heading.
+- **On a live lab host carrying real traffic:**
+  - the upgrade from v9.2.1: every state file moved intact, the lab unchanged;
+  - 39 end-to-end checks through the running service — VLANs, bridges, the split and
+    the totals, every netem setting, rate limiting, labels, profiles, settings,
+    accounts and roles — each confirmed in the kernel, first with and then without
+    `CAP_NET_RAW`, which is why it was removed;
+  - the port change under systemd: to a new port and back, same process, impairments
+    untouched;
+  - a rollback to v9.2.1 and an upgrade again;
+  - a cold reboot: back confined, lab rebuilt from scratch, impairments re-applied,
+    state unchanged, and all 39 checks again on the fresh kernel;
+  - the management-interface protection: detected and protected by the installer,
+    then 14 checks — refusals while protected, nothing kept while not — run against
+    a test interface, so the real management interface was never touched.
+- The bridge totals, the port change and Help clicked through in the dashboard.
+
+---
+
 ## v9.2.1 — 25 September 2026
 
 A small hardening update to v9.2. Upgrade the same way

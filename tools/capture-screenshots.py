@@ -6,8 +6,9 @@ switches to each tab, and screenshots it with headless Chromium into docs/img/.
 
     python3 tools/capture-screenshots.py
 
-Requires chromium (or google-chrome) on PATH. Re-run after any UI change so the
-README never drifts from what the app actually looks like.
+Requires chromium (or google-chrome) on PATH. Run it with the project's virtualenv
+(Pillow keeps the images small; Markdown fills the Help pages). Re-run after any UI
+change so the README never drifts from what the app actually looks like.
 """
 import http.server
 import os
@@ -33,10 +34,12 @@ SHOTS = [
     ("users",    "05-user-management.png", (1440, 820), "dark",  None),
     ("tc",       "06-light-theme.png", (1440, 1000), "light", None),
     ("profiles", "07-profiles.png",   (1440, 760), "dark",  None),
-    ("tc",       "08-settings.png",   (1440, 900), "dark",  "openSettings()"),
+    ("tc",       "08-settings.png",   (1440, 1480), "dark", "openSettings()"),
     ("tc",       "09-member-controls.png", (1440, 900), "dark", "openBrDrawer('br-wan1')"),
     ("tc",       "10-interface-stats.png", (1440, 900), "dark", "showStats('eth0')"),
     ("bridges",  "11-user-role.png",  (1440, 760), "dark",  None, "user"),
+    ("help",     "12-help.png",       (1440, 1000), "dark", None),
+    ("help",     "13-about.png",      (1440, 820), "dark",  "openHelp('about')"),
 ]
 
 
@@ -72,6 +75,8 @@ def find_chromium():
 
 def build_pages(workdir):
     """Write one HTML file per shot, each auto-selecting its tab and theme."""
+    # Help pages show images from docs/img, and the preview points them there.
+    shutil.copytree(ROOT / "docs" / "img", workdir / "docs" / "img")
     previews = {}
     for role in sorted({(shot[5] if len(shot) > 5 else "admin") for shot in SHOTS}):
         subprocess.run([sys.executable, str(ROOT / "tools" / "ui-preview.py"), role],

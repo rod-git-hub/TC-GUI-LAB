@@ -12,6 +12,12 @@ Pass "user" to check which controls the non-admin role hides.
 """
 import json, os, sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tc_manager import combine_member_configs      # the server's own arithmetic
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+with open(os.path.join(REPO, "app.py")) as f:
+    VERSION = f.readline().strip().strip('"').split()[-1].lstrip("v")
+
 ROLE = sys.argv[1] if len(sys.argv) > 1 else "admin"
 
 SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "index.html")
@@ -28,15 +34,19 @@ for i in ifaces:
     master = next((b for b, v in bridges.items() if i in v["members"]), "")
     meta[i] = {"is_bridge": i in bridges, "is_member": bool(master), "master": master,
                "state": "down" if i == "eth1.201" else "up", "mtu": 1500}
+# Members carry the impairments; a bridge shows their total (here 10 + 40 ms,
+# an uneven path, = 50 ms round trip).
 state = {
-    "eth1.100":  {"latency_ms": 5.0},
-    "eth1.200": {"latency_ms": 5.0},
-    "br-wan1":  {"latency_ms": 10, "jitter_ms": 0, "loss_pct": 0,
-                    "duplicate_pct": 0, "corrupt_pct": 0, "rate_mbit": 0},
+    "eth1.100": {"latency_ms": 10.0},
+    "eth1.200": {"latency_ms": 40.0},
 }
+totals = {br: combine_member_configs([state.get(m, {}) for m in v["members"]])
+          for br, v in bridges.items()}
 DATA = {
     "/api/interfaces": {"interfaces": ifaces, "bridges": bridges,
                         "unbridged": ["eth0", "eth1"], "meta": meta, "state": state,
+                        "totals": totals,
+                        "mgmt": {"interface": "eth0", "locked": True, "related": ["eth0"]},
                         "labels": {"br-wan1": "Branch office uplink",
                                    "eth1.100": "MPLS circuit"}},
     "/api/vlans": {"vlans": [{"name": f"eth1.{v}", "parent": "eth1", "vlan_id": v,
@@ -54,7 +64,9 @@ DATA = {
                       "satellite_link": {"latency_ms": 600, "jitter_ms": 50, "loss_pct": 2},
                       "packet_loss": {"loss_pct": 5, "duplicate_pct": 0.5},
                       "wan_degraded": {"latency_ms": 200, "jitter_ms": 80, "loss_pct": 8}},
-    "/api/config": {"idle_timeout_minutes": 30},
+    "/api/config": {"idle_timeout_minutes": 30, "bind_address": "0.0.0.0", "port": 5000,
+                    "management_interface": "eth0", "protect_management": True},
+    "/api/config/mgmt-suggest": {"interface": "eth0"},
     "/api/auth/whoami": {"username": "operator" if ROLE == "user" else "admin", "role": ROLE},
     "/api/users": {"ok": True, "self": "admin", "roles": ["admin", "user"],
                    "users": [{"username": "admin", "role": "admin"},
@@ -65,6 +77,19 @@ DATA = {
                                        " backlog 0b 0p requeues 0"},
 }
 
+# Help pages, rendered by the server's own code. Images are served from the
+# repository by the preview's HTTP server, so point them at docs/img directly.
+try:
+    import help_docs
+    DATA["/api/help"] = {"version": VERSION, "project_url": help_docs.PROJECT_URL,
+                         "pages": [{"id": p, "title": t} for p, t, _ in help_docs.PAGES]}
+    for pid, title, _ in help_docs.PAGES:
+        html = help_docs.render(pid, VERSION)[1].replace('src="/help/img/', 'src="docs/img/')
+        DATA[f"/api/help/{pid}"] = {"ok": True, "id": pid, "title": title, "html": html}
+except ImportError:
+    print("note: Markdown is not installed here, so Help is empty in the preview "
+          "(pip install -r requirements.txt)")
+
 STUB = """
 /* ---- preview fixture: no backend required ---- */
 window.fetch=function(u){
@@ -74,7 +99,8 @@ window.fetch=function(u){
 };
 """.replace("__DATA__", json.dumps(DATA))
 
-html = open(SRC).read().replace("{{ csrf_token() }}", "PREVIEW-TOKEN")
+html = (open(SRC).read().replace("{{ csrf_token() }}", "PREVIEW-TOKEN")
+        .replace("{{ version }}", VERSION))
 assert "<script>" in html
 html = html.replace("<script>", "<script>" + STUB, 1)
 open(DST, "w").write(html)

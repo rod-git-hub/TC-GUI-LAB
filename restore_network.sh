@@ -23,7 +23,8 @@ if [ ! -f "$CONF" ]; then
 fi
 
 log "Config found: $CONF"
-modprobe 8021q 2>/dev/null && log "8021q loaded" || log "8021q: already loaded or unavailable"
+# No modprobe: the kernel loads 8021q itself when a VLAN is created, and the
+# confined service cannot load modules anyway.
 
 python3 "${SCRIPT_DIR}/restore_helper.py" 2>&1 | tee -a "$LOG"
 

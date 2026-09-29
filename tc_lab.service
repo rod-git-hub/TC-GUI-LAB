@@ -5,53 +5,68 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# An unprivileged system user, created by setup.sh. The service is handed the
+# one network capability it needs (below) instead of running as root.
+User=tc-lab
+Group=tc-lab
+# Code: /opt/tc_lab, owned by root and read-only to the service.
+# State (accounts, settings, certificate, saved impairments, topology, profiles):
+# /var/lib/tc_lab, owned by tc-lab — the only place the service can write.
 WorkingDirectory=/opt/tc_lab
-# State dir defaults to WorkingDirectory. Override to move state onto its own
-# mount (must be writable):
-# Environment=TC_LAB_STATE_DIR=/var/lib/tc_lab
+Environment=TC_LAB_STATE_DIR=/var/lib/tc_lab
 ExecStartPre=/bin/bash /opt/tc_lab/restore_network.sh
 ExecStart=/opt/tc_lab/venv/bin/python /opt/tc_lab/app.py
 Restart=on-failure
 RestartSec=5
 
-# ── Hardening (kept compatible with a root app that needs tc/ip) ─────────────
-# Assumes the /opt/tc_lab install path. For an install elsewhere, change
-# ReadWritePaths (and drop ProtectHome if it lives under /home).
+# ── Capabilities ────────────────────────────────────────────────────────────
+# An ambient capability gives a non-root process this one — and nothing else —
+# and passes it on to the ip/tc commands it runs. The bounding set makes sure
+# nothing can ever add more.
 #
-# Capability confinement. Without this line the service holds all 40 of root's
-# capabilities; it uses two. Everything else — CAP_SYS_ADMIN, CAP_SYS_PTRACE,
-# CAP_DAC_OVERRIDE, CAP_SETUID, CAP_SYS_BOOT and the rest — is pure blast radius
-# for a Flask app that shells out to iproute2.
+#   CAP_NET_ADMIN   ip link / tc qdisc / bridges, VLANs — everything TC Lab does
 #
-#   CAP_NET_ADMIN   ip link / tc qdisc / bridge, and writing net.* sysctls
-#   CAP_NET_RAW     required alongside NET_ADMIN for netem
+# CAP_NET_RAW (raw and packet sockets) was held until v9.3, then removed: every
+# operation was validated on a live lab host without it.
 #
-# CAP_SYS_MODULE is deliberately NOT granted. Holding it means being able to
-# load a kernel module — arbitrary code in the kernel — which would undo the
-# rest of this. It is not needed: when `ip link add ... type vlan` or
+# CAP_SYS_MODULE is deliberately NOT granted: it means loading arbitrary code
+# into the kernel. It is not needed — when `ip link add ... type vlan` or
 # `tc qdisc add ... htb` asks for a module that is not loaded, the KERNEL loads
 # it (rtnl-link-* / sch_* aliases), independently of the caller's capabilities.
-# The app's own `modprobe 8021q` calls then simply fail harmlessly; nothing
-# depends on their result.
-#
-# Note the dependency on root-owned files: dropping CAP_DAC_OVERRIDE means the
-# app can only write files it actually owns, which is why setup.sh chowns the
-# install to root (see its step 6). Do not weaken one without the other.
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
 NoNewPrivileges=yes
-ProtectSystem=full
+
+# ── Filesystem ──────────────────────────────────────────────────────────────
+# The whole filesystem is read-only to the service except its state directory.
+# Keep ReadWritePaths equal to TC_LAB_STATE_DIR above (setup.sh rewrites both).
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tc_lab
 ProtectHome=yes
-ReadWritePaths=/opt/tc_lab
 PrivateTmp=yes
-ProtectControlGroups=yes
+PrivateDevices=yes
+UMask=0077
+
+# ── Kernel, processes, system calls ─────────────────────────────────────────
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
 ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
 RestrictSUIDSGID=yes
 RestrictRealtime=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
-# NOT set: ProtectKernelTunables (needs to write net.ipv4.ip_forward)
-#          ProtectKernelModules  (kernel autoload has been validated without it
-#                                 only; enable after testing, not before)
+RemoveIPC=yes
+# AF_NETLINK is how ip and tc talk to the kernel; AF_INET/INET6 serve the
+# dashboard; AF_UNIX is used by the Python runtime.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

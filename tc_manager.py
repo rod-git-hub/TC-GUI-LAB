@@ -69,3 +69,31 @@ def split_config_for_members(config,num_members=2):
             out[key]=0.0 if p<=0 else round((1-math.pow(1-p,1/n))*100,4)
     if "rate_mbit" in config: out["rate_mbit"]=float(config["rate_mbit"])
     return out
+def combine_member_configs(configs):
+    """The end-to-end impairment of a bridge whose members carry `configs` —
+    the inverse of split_config_for_members, and what the bridge card shows.
+
+    netem shapes packets *leaving* an interface, so on a two-member bridge each
+    member handles one direction and the figures are round-trip totals: delays
+    add up; independent loss/duplication/corruption chances compound; the
+    slowest member's rate is the bottleneck (0 = no limit). Rounded to what the
+    kernel reports back anyway (tc prints three significant digits)."""
+    total = {"latency_ms": 0.0, "jitter_ms": 0.0, "loss_pct": 0.0,
+             "duplicate_pct": 0.0, "corrupt_pct": 0.0, "rate_mbit": 0.0}
+    passes = {"loss_pct": 1.0, "duplicate_pct": 1.0, "corrupt_pct": 1.0}
+    rates = []
+    for cfg in configs:
+        cfg = cfg or {}
+        for key in ("latency_ms", "jitter_ms"):
+            total[key] += float(cfg.get(key) or 0)
+        for key in passes:
+            passes[key] *= 1 - min(max(float(cfg.get(key) or 0), 0.0), 100.0) / 100
+        rate = float(cfg.get("rate_mbit") or 0)
+        if rate > 0:
+            rates.append(rate)
+    for key in ("latency_ms", "jitter_ms"):
+        total[key] = round(total[key], 1)
+    for key, p in passes.items():
+        total[key] = round((1 - p) * 100, 3)
+    total["rate_mbit"] = min(rates) if rates else 0.0
+    return total

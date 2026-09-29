@@ -1,3 +1,101 @@
+## [v9.3] - 2026-09-29
+
+The service stops running as root; the dashboard port can be changed; a bridge
+shows the total of its members; and the documentation is built into the
+dashboard. **The state moves** from `/opt/tc_lab` to `/var/lib/tc_lab` — the
+installer does it. Upgrade notes: [docs/upgrading.md](docs/upgrading.md).
+
+### Security
+- **The service runs as its own unprivileged user, `tc-lab`, not root.** It is
+  handed `CAP_NET_ADMIN` alone as an ambient capability (equal to the bounding
+  set, so it can never gain more) and `ProtectSystem=strict` makes the
+  whole filesystem read-only to it except `/var/lib/tc_lab`, its state directory.
+  Under v9.2 it ran as UID 0 with `/var` writable, so a compromised app could
+  write root-owned files there that something unconfined later runs as full root
+  (for example a package's install script at the next `apt upgrade`). Added:
+  `PrivateDevices`, `ProtectKernelModules`, `ProtectKernelTunables`,
+  `ProtectClock`, `ProtectHostname`, `ProtectProc=invisible`, `RestrictNamespaces`,
+  `RestrictAddressFamilies`, `SystemCallFilter=@system-service`,
+  `SystemCallArchitectures=native`, `RemoveIPC`, `UMask=0077`.
+  `systemd-analyze security`: 5.9 MEDIUM → 1.8 OK.
+- **`CAP_NET_RAW` removed.** Every operation TC Lab performs was run on a live lab
+  host without it; nothing needs it. The service can no longer open raw or packet
+  sockets.
+- **Creating a bridge no longer sets `net.ipv4.ip_forward=1`.** A bridge forwards
+  at layer 2 and does not need it; it turned the whole host into a router.
+- **No `modprobe` calls.** The kernel loads `8021q` and the qdisc modules itself;
+  the confined service could not load modules anyway.
+- The CLI hands the files it writes as root (a recreated `users.json`, its backup,
+  `config.json`) back to the state directory's owner, so the service can read them.
+
+### Added
+- **Service port setting.** Settings → Service Port (admins), `setup.sh --port N`,
+  and `sudo tc-lab set-port N` as the way back. 1024–65535; a port something is
+  listening on is refused. Settings restarts TC Lab *in place* (the same process
+  re-executes itself, keeping its capabilities) and skips the topology restore and
+  `tc` re-apply, so impairments are not interrupted; the page follows to the new
+  address. `ports.py` holds the rules for the app and the CLI; `setup.sh` keeps a
+  copy of the range, and a test keeps them equal.
+- **Bridge totals.** A bridge card shows the combined impairment of its members
+  (`tc_manager.combine_member_configs`, the inverse of the split: delays add,
+  loss/duplication/corruption compound, the slowest rate is the bottleneck).
+  `/api/interfaces` returns `totals`; apply/reset return the new total. Member tags
+  show each member's latency.
+- **Help and About in the dashboard.** The README, user guide, deployment,
+  upgrading, users-and-security, security policy, release notes and changelog,
+  rendered from the Markdown shipped with the install (`help_docs.py`): a fixed
+  list of pages, raw HTML shown as text, unsafe links dropped, links between the
+  documents opened in Help at GitHub's heading anchors, images only from
+  `docs/img/`. About shows the running version and links to the project. New
+  dependency: `Markdown==3.11`.
+- **Installer:** creates the service user; moves pre-v9.3 state out of the install
+  directory (copy, `cmp`, then delete); snapshots include the state directory and
+  rollback restores either layout, deciding from the restored unit; an upgrade reads
+  the state directory and user back from the installed unit; new
+  `TC_LAB_STATE_DIR` and `TC_LAB_USER` overrides.
+- Tests: 157 → 315. `tests/test_installer.py` runs the real `setup.sh` as fake root
+  in a user namespace against scratch directories (fresh install, v9.2.1 → v9.3 →
+  rollback → v9.3, snapshots, `--port`, stray state); `tests/test_help.py` fails if a
+  link between the documents stops landing on a real heading.
+- The reference topology diagram is now in the repository (`docs/img/00-topology.png`),
+  so Help can show it offline. Screenshots of Help and About.
+
+- **Management interface protection.** config.json `management_interface` +
+  `protect_management` (default on; `mgmt_guard.py`). Protected: a VLAN on it, it or
+  its VLANs as a bridge member, bringing it down, and importing such a bundle are
+  refused. Always: never persisted — `save_net_config` and import leave out its VLANs
+  and, whole, any bridge with such a member; `state.json` leaves out impairments on it;
+  the boot restore and tc re-apply skip it. Settings → Management Interface (suggests
+  the interface the admin's browser uses, `ip route get`); MGMT tag, banners, pickers
+  and confirm warnings in the page; setup.sh detects it and asks once
+  (`--mgmt-iface`, `--protect-mgmt`, `--allow-mgmt`).
+
+### Changed
+- **State lives in `/var/lib/tc_lab`** (owned by `tc-lab`, mode 700); the code in
+  `/opt/tc_lab` is owned by root and read-only to the service.
+- **A bridge has at most two members** — one for each side of the lab path. A third
+  is refused by the API and in imported bundles; Bridge Manager hides **+** at two.
+- A bridge's own value is no longer stored in `state.json`; the members are the only
+  record. Entries left by v9.2 are dropped at start-up and on import.
+- Shipped profiles are added to the state directory only when missing, so your edits
+  to one survive upgrades (they used to be overwritten).
+- A `config.json` port below 1024 falls back to 5000 with a warning; the installer
+  flags it.
+- The version is written once, in `app.py`'s first line; the page, the export and
+  About read it from there.
+- `tc-lab` finds the state directory through the installed unit.
+- Start-up warns when `CAP_NET_ADMIN` is missing, instead of when not running as root.
+
+### Fixed
+- The page redraws every 20 seconds and silently threw away impairment values typed
+  but not yet applied — on a bridge card it looked as if Apply did nothing. Cards
+  being edited keep their values until Apply or Reset.
+- Snapshots were labelled `.v9.2.1` in `--list-backups` (the dot of "app.py").
+- The deployment guide's "run it in the foreground" instructions would, from v9.3,
+  have created a second, root-owned set of state files in `/opt/tc_lab`. Replaced
+  with `journalctl -f`; the installer now also recognises such stray files and
+  leaves the real state alone.
+
 ## [v9.2.1] - 2026-09-25
 
 A small hardening release from a post-release review of v9.2. No data or
