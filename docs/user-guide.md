@@ -174,6 +174,10 @@ example `eth1.100`.
 You can also bring a VLAN up or down, delete it, and view its statistics. Deleting a
 VLAN that is a bridge member removes it from the bridge.
 
+The **management interface** carries a red **MGMT** tag. While it is protected (see
+[Settings](#9-settings)) it is left out of the parent list, and the page says so; while
+it is not, a VLAN on it asks you to confirm first — and is not kept after a reboot.
+
 **Names** — for VLANs, bridges and profiles alike — may use letters, digits, `.`, `_`
 and `-`, must not start with `-` or `.`, and must be plain ASCII. Linux limits
 interface and bridge names to **15 characters**.
@@ -190,6 +194,10 @@ through TC Lab.
 **Create a bridge** *(admin)*: give it a name, pick its two members from the
 interfaces that are not already in a bridge, and create it. STP (Spanning Tree) is off
 by default, which is what a simple two-port lab path wants.
+
+The management interface and its VLANs never go into a bridge while it is protected.
+Unprotected, TC Lab warns first: adding it to a bridge removes its IP address, which
+cuts off your access. Such a bridge is not kept after a reboot.
 
 A bridge has **at most two members** — one for each side of the lab path. TC Lab
 refuses a third.
@@ -293,6 +301,14 @@ Open it with ⚙ in the top bar.
   address; you stay signed in. A port something else is using is refused. If a
   firewall only allows the old port you will lose access: on the host,
   `sudo tc-lab set-port <old port>` and `sudo systemctl restart tc_lab` put it back.
+- **Management Interface** *(admins only)* — the interface you reach TC Lab (and SSH)
+  through, and whether it is **protected**. Protected, TC Lab refuses a VLAN on it,
+  adding it or its VLANs to a bridge, and bringing it down — any of those can cut off
+  your access (adding an interface to a bridge removes its IP address). Unprotected,
+  they are allowed after a warning, at your own risk. Either way, **nothing involving
+  it is kept after a reboot**: the interface always comes back in its normal state.
+  The installer asks about this once; with nothing chosen yet, Settings suggests the
+  interface your browser is using.
 - **Appearance** — dark or light. The choice is remembered by your browser, for each
   address — so after a port change you may need to pick it again.
 
@@ -330,7 +346,7 @@ project on GitHub, its releases, and how to report a security issue.
 | Create and delete VLANs and bridges; add and remove members | ✓ | |
 | Bring interfaces, VLANs and bridges up or down | ✓ | |
 | Import a lab config | ✓ | |
-| Change the idle timeout and the service port | ✓ | |
+| Change the idle timeout, the service port and the management interface | ✓ | |
 | Manage accounts | ✓ | |
 
 A `user` sees the same pages without the controls they cannot use — here, the Bridge

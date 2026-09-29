@@ -34,7 +34,7 @@ SHOTS = [
     ("users",    "05-user-management.png", (1440, 820), "dark",  None),
     ("tc",       "06-light-theme.png", (1440, 1000), "light", None),
     ("profiles", "07-profiles.png",   (1440, 760), "dark",  None),
-    ("tc",       "08-settings.png",   (1440, 1240), "dark", "openSettings()"),
+    ("tc",       "08-settings.png",   (1440, 1480), "dark", "openSettings()"),
     ("tc",       "09-member-controls.png", (1440, 900), "dark", "openBrDrawer('br-wan1')"),
     ("tc",       "10-interface-stats.png", (1440, 900), "dark", "showStats('eth0')"),
     ("bridges",  "11-user-role.png",  (1440, 760), "dark",  None, "user"),

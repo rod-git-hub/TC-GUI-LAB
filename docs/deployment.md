@@ -72,6 +72,7 @@ What `setup.sh` does, step by step:
 | Step | Effect |
 |---|---|
 | checks `--port`, if given | a number from 1024 to 65535 that nothing is listening on — checked before anything changes |
+| asks about the management interface | on a new install, or the first upgrade without the setting: detects it (the interface your SSH session uses) and asks whether to protect it — default yes |
 | asks about existing accounts | only on an upgrade; keeps them by default |
 | `apt-get update && apt-get install …` | installs the system packages listed above |
 | snapshot | on an upgrade: code and state to `/var/backups/tc-lab` |
@@ -171,6 +172,8 @@ valid JSON.
 | `idle_timeout_minutes` | `30` | auto sign-out after inactivity; `0` disables |
 | `bind_address` | `0.0.0.0` | **set this to your management IP** to stop the UI listening on the lab NICs |
 | `port` | `5000` | TCP port for the web UI, `1024`–`65535` |
+| `management_interface` | set by the installer | the interface this host is managed through — see below |
+| `protect_management` | `true` | refuse using it for VLANs, bridges or bringing it down |
 
 After editing the file by hand, restart:
 
@@ -195,6 +198,22 @@ root. If `config.json` asks for one — possible under v9.2, which did — TC La
 
 Your browser remembers the dark/light theme per address, so it may need setting
 again after a port change.
+
+### The management interface
+
+The interface you reach the dashboard (and SSH) through. Using it in the lab is risky:
+adding it to a bridge removes its IP address, and bringing it down or impairing it
+cuts off access.
+
+- **Protected** (the default): TC Lab refuses a VLAN on it, adding it or its VLANs to a
+  bridge, bringing it down, and importing a config that does any of these.
+- **Not protected:** allowed after a warning, at your own risk.
+- **Either way, nothing involving it is kept:** such VLANs and bridges are left out of
+  the saved topology — a bridge with it as a member is not rebuilt at all — and
+  impairments on it are not re-applied. After a reboot it is always back to normal.
+
+The installer detects it and asks once; change it any time in Settings → Management
+Interface, or with `setup.sh --mgmt-iface NAME --protect-mgmt` (or `--allow-mgmt`).
 
 ### Environment variables
 
@@ -242,6 +261,8 @@ sudo bash setup.sh --help
 | Flag | Effect |
 |---|---|
 | `--port N` | set the dashboard port (1024–65535) |
+| `--protect-mgmt` / `--allow-mgmt` | protect the management interface, or not, without asking |
+| `--mgmt-iface NAME` | name the management interface instead of detecting it |
 | `--keep-users` | never prompt; keep existing accounts |
 | `--reset-users` | never prompt; delete accounts (a backup is written first) |
 | `--no-backup` | skip the pre-upgrade snapshot (rollback is then impossible) |

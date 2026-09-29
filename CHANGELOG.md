@@ -60,6 +60,16 @@ installer does it. Upgrade notes: [docs/upgrading.md](docs/upgrading.md).
 - The reference topology diagram is now in the repository (`docs/img/00-topology.png`),
   so Help can show it offline. Screenshots of Help and About.
 
+- **Management interface protection.** config.json `management_interface` +
+  `protect_management` (default on; `mgmt_guard.py`). Protected: a VLAN on it, it or
+  its VLANs as a bridge member, bringing it down, and importing such a bundle are
+  refused. Always: never persisted — `save_net_config` and import leave out its VLANs
+  and, whole, any bridge with such a member; `state.json` leaves out impairments on it;
+  the boot restore and tc re-apply skip it. Settings → Management Interface (suggests
+  the interface the admin's browser uses, `ip route get`); MGMT tag, banners, pickers
+  and confirm warnings in the page; setup.sh detects it and asks once
+  (`--mgmt-iface`, `--protect-mgmt`, `--allow-mgmt`).
+
 ### Changed
 - **State lives in `/var/lib/tc_lab`** (owned by `tc-lab`, mode 700); the code in
   `/opt/tc_lab` is owned by root and read-only to the service.

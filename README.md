@@ -22,6 +22,8 @@ interfaces. Built for Fortinet SD-WAN, SASE, and general network lab testing.
 - Light / Dark theme
 - Configurable idle session timeout and dashboard port
 - **Help built in** — this documentation inside the dashboard, readable offline
+- **Management-interface protection** — keeps the interface you manage the host through
+  out of VLANs and bridges, and never lets such a setup survive a reboot
 - Role-based access — **admin** manages interfaces / bridges / VLANs and user accounts,
   **user** changes impairments
 - **User management in the dashboard** (admin-only) + `sudo tc-lab reset-admin-password` recovery

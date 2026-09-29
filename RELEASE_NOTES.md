@@ -16,6 +16,8 @@ For the itemised list see [CHANGELOG.md](CHANGELOG.md); for the upgrade itself,
 - **Change the port** from Settings, the installer, or the `tc-lab` command.
 - **Bridges show their total.** Set 50 ms on a bridge and each member gets 25 ms;
   set the members to 10 ms and 40 ms and the bridge shows 50 ms.
+- **The management interface is protected** — TC Lab will not wipe its address by
+  bridging it, and nothing involving it survives a reboot.
 - **Help and About** in the sidebar — this documentation, for the version you are
   running, readable without internet access.
 
@@ -31,7 +33,8 @@ For the itemised list see [CHANGELOG.md](CHANGELOG.md); for the upgrade itself,
    falls back to 5000 and tells you.
 4. **Creating a bridge no longer switches on IP forwarding** for the whole host. If
    you also route traffic through this host, set `net.ipv4.ip_forward` yourself.
-5. **Hard-refresh your browser** (Ctrl-Shift-R) after upgrading, as always.
+5. **The installer asks about the management interface** — press Enter to protect it.
+6. **Hard-refresh your browser** (Ctrl-Shift-R) after upgrading, as always.
 
 ### Upgrading
 
@@ -77,6 +80,16 @@ on the bridge still splits the value equally across the members. Each member's t
 shows its latency.
 
 A bridge has **at most two members** — one per side of the lab path.
+
+#### The management interface
+
+Adding an interface to a bridge removes its IP address, so bridging the one you manage
+the host through cuts you off — and TC Lab used to rebuild that bridge after every
+reboot. Now the management interface is marked **MGMT** and can be **protected**: VLANs
+on it, bridging it and bringing it down are refused. The installer asks (default: yes);
+change it in Settings → Management Interface. Unprotected, it can be used after a
+warning, at your own risk. Either way, nothing involving it — VLANs, bridges,
+impairments — is kept after a reboot.
 
 #### Help and About
 

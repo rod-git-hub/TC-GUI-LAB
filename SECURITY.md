@@ -28,6 +28,7 @@ for internet-facing deployment** and by design manipulates the host's live netwo
 | Headers | None | `X-Frame-Options`, `nosniff`, `Referrer-Policy`, HSTS, CSP |
 | Error handling | 500 returned the exception string; import echoed exception text *(fixed in v9.2.1)* | Generic messages; detail in the log only |
 | Deployment | Unconfined systemd root (all 40 capabilities); install owned by the cloning user | Its own unprivileged user, `tc-lab`, holding only `CAP_NET_ADMIN` *(v9.3)*; the whole filesystem read-only to it except `/var/lib/tc_lab` and a private, throwaway `/tmp` *(v9.3)*; code owned by root; sandboxed unit |
+| Management interface *(v9.3)* | Nothing stopped a VLAN or bridge using it — a bridge wipes its IP address, cutting off access — and such config came back after every reboot | Protected by default (the installer asks): such use is refused. Unprotected, allowed after a warning. Never kept after a reboot either way |
 | User management | Hand-edit `users.json` | Admin-only dashboard section; `tc-lab reset-admin-password` for recovery; the state directory, accounts included, is readable only by the service |
 
 ## Remaining limitations
@@ -47,6 +48,7 @@ for internet-facing deployment** and by design manipulates the host's live netwo
   sandboxed systemd unit.
 - Set `bind_address` in `/var/lib/tc_lab/config.json` to your management IP; firewall the
   dashboard port (5000 unless you changed it) to admin workstations only.
+- Keep the management interface **protected** (Settings → Management Interface).
 - Change the default `admin / tclab123` password on first login.
 - Give day-to-day operators the **`user`** role; keep **`admin`** for topology and
   account changes. Create accounts from the dashboard's Users section.

@@ -38,6 +38,10 @@ Upgrade the same way ([step 2](#2-upgrade)). What is different afterwards:
   the next reboot.
 - **Your edits to a shipped profile survive upgrades** (they used to be
   overwritten). A shipped profile you deleted still comes back.
+- **The installer asks about the management interface** — the one you reach the
+  host through. Protect it (the default) and TC Lab will not use it for VLANs or
+  bridges, or bring it down. Either way, nothing involving it is kept after a reboot.
+  See [The management interface](deployment.md#the-management-interface).
 - **Ports below 1024** (such as 443) cannot be used any more — the service is not
   root. If `config.json` asks for one, TC Lab uses 5000 and the installer says so.
 
