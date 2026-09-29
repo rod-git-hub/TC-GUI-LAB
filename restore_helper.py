@@ -11,6 +11,10 @@ try:
     from bridge_manager import is_foreign_bridge
 except ImportError:                                  # standalone / partial install
     def is_foreign_bridge(_name): return False
+try:
+    import mgmt_guard
+except ImportError:                                  # standalone / partial install
+    mgmt_guard = None
 
 CONF = os.path.join(os.environ.get("TC_LAB_STATE_DIR", "/opt/tc_lab"),
                     "network_config.json")
@@ -47,6 +51,15 @@ try:
 except Exception as e:
     log(f"ERROR reading {CONF}: {e}")
     sys.exit(1)
+
+# Never rebuild anything on the management interface: a reboot must always give
+# it back in its normal state. app.py never saves such entries; this is the
+# second guard (an older file, or one edited by hand).
+if mgmt_guard:
+    mgmt, _ = mgmt_guard.load_settings(os.environ.get("TC_LAB_STATE_DIR", "/opt/tc_lab"))
+    conf, dropped = mgmt_guard.filter_net_config(conf, mgmt)
+    if dropped:
+        log(f"  Skipping (uses the management interface {mgmt}): {', '.join(dropped)}")
 
 vlans   = conf.get("vlans", [])
 bridges = conf.get("bridges", {})

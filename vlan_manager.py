@@ -133,3 +133,14 @@ def set_iface_up(iface, up=True):
 def get_iface_stats(iface):
     rc, out, err = _run(["ip", "-s", "link", "show", iface])
     return {"ok": rc == 0, "raw": out, "stderr": err}
+
+def interface_for(addr):
+    """The local interface traffic to `addr` leaves by (`ip route get`), or None —
+    e.g. the interface an admin's browser reaches the dashboard through. Loopback
+    (the admin is on the host itself) gives None."""
+    try:
+        rc, out, _ = _run(["ip", "-j", "route", "get", str(addr)])
+        dev = _json.loads(out)[0].get("dev") if rc == 0 and out.strip() else None
+    except Exception:
+        return None
+    return None if dev in (None, "lo") else dev
