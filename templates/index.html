@@ -547,6 +547,7 @@ body.is-admin .tab.admin-only{display:flex}
 
     <!-- ── Interfaces / VLANs ─────────────────────────────────────── -->
     <div id="tab-vlans" class="panel">
+      <div id="mgmt-banner-vl" style="display:none;margin-bottom:14px"></div>
       <div class="page-hdr">
         <div>
           <h2 class="page-title">Interfaces &amp; VLANs</h2>
@@ -589,6 +590,7 @@ body.is-admin .tab.admin-only{display:flex}
 
     <!-- ── Bridge Manager ─────────────────────────────────────────── -->
     <div id="tab-bridges" class="panel">
+      <div id="mgmt-banner-br" style="display:none;margin-bottom:14px"></div>
       <div class="page-hdr">
         <div>
           <h2 class="page-title">Bridge Manager</h2>
@@ -857,6 +859,26 @@ body.is-admin .tab.admin-only{display:flex}
         <div id="port-status" class="sb info"></div>
       </div>
 
+      <div class="msec" id="mgmt-section" style="display:none">
+        <div class="msec-title"><svg class="ic"><use href="#i-lock"/></svg>Management Interface</div>
+        <p class="card-note" style="margin-bottom:12px">
+          The interface you reach this dashboard (and SSH) through. Adding it to a bridge
+          wipes its IP address; bringing it down or impairing it cuts off access.
+          <b>Protected</b>, TC Lab refuses VLANs on it, bridge membership and bringing it
+          down. Unprotected, those are allowed at your own risk. Either way, nothing
+          involving it is kept after a reboot.
+        </p>
+        <div class="field-row">
+          <div style="flex:1;min-width:150px"><label for="mgmt-iface">Interface</label>
+            <select id="mgmt-iface"></select></div>
+          <label style="display:flex;align-items:center;gap:6px;align-self:flex-end;padding-bottom:8px">
+            <input type="checkbox" id="mgmt-lock"/>Protect it</label>
+          <button class="bG" onclick="doSaveMgmt()">
+            <svg class="ic"><use href="#i-save"/></svg>Save</button>
+        </div>
+        <div id="mgmt-status" class="sb info"></div>
+      </div>
+
       <div class="msec">
         <div class="theme-row">
           <div class="msec-title" style="margin:0"><svg class="ic"><use href="#i-sun"/></svg>Appearance</div>
@@ -890,6 +912,25 @@ body.is-admin .tab.admin-only{display:flex}
 <script>
 let ifaces=[],bridges={},ifMeta={},unbridged=[],tcState={},profiles={},labels={},totals={};
 let helpIndex=null,helpPage=null;      // Help: page list from the server, page shown
+let mgmt={interface:'',locked:false,related:[]};   // the management interface, from the server
+// Using the management interface can cut off access to this dashboard. Locked:
+// the server refuses it, so pickers leave it out. Unlocked: allowed after a
+// warning. Impairing it is never blocked, but always warned about.
+function isMgmt(n){return !!mgmt.interface&&(mgmt.related.includes(n)||String(n).startsWith(mgmt.interface+'.'));}
+function mgmtOk(p){return !(mgmt.locked&&isMgmt(p&&p.name!==undefined?p.name:p));}
+function mgmtRisk(n,what,always){
+  if(!isMgmt(n)||(mgmt.locked&&!always)) return true;
+  return confirm(`${n} is the management interface — how you reach this dashboard (and SSH).\n\n`
+    +`${what} can cut off your access immediately.\n\n`
+    +`It is never kept after a reboot: the interface comes back normal then.\n\nContinue at your own risk?`);}
+function renderMgmtBanner(){
+  const m=mgmt.interface
+    ?(mgmt.locked
+      ?['info',`🔒 ${esc(mgmt.interface)} is the management interface. It is protected, so it is left out of these lists.`]
+      :['warn',`⚠ The management interface, ${esc(mgmt.interface)}, is not protected. Using it here can cut off your access. Nothing involving it is kept after a reboot.`])
+    :['warn','⚠ No management interface is chosen. Choose it in Settings → Management Interface so TC Lab can keep it safe.'];
+  ['mgmt-banner-vl','mgmt-banner-br'].forEach(id=>{const e=document.getElementById(id);
+    if(e){e.className='wbanner '+m[0];e.innerHTML=m[1];e.style.display='';}});}
 let vlanData={vlans:[],physical:[]};
 let idleTimeout=30, lastActivity=Date.now(), idleWarningShown=false;
 
@@ -931,7 +972,27 @@ async function loadConfig(){
     const el=document.getElementById('port-val');
     if(el) el.value=svcPort;
   }
+  const sel=document.getElementById('mgmt-iface'),chk=document.getElementById('mgmt-lock');
+  if(r&&sel&&chk){
+    let cur=r.management_interface||'';
+    sb('mgmt-status','','info');
+    if(!cur){
+      const g=await api('/api/config/mgmt-suggest');
+      if(g&&g.interface){cur=g.interface;
+        sb('mgmt-status',`Detected ${cur} — the interface your browser uses. Check it, then Save.`,'info');}}
+    const names=ifaces.filter(i=>!bridges[i]);
+    if(cur&&!names.includes(cur)) names.unshift(cur);
+    sel.innerHTML='<option value="">— none —</option>'+names.map(i=>
+      `<option${i===cur?' selected':''}>${esc(i)}</option>`).join('');
+    chk.checked=r.protect_management!==false;
+  }
 }
+async function doSaveMgmt(){
+  const iface=document.getElementById('mgmt-iface').value,lock=document.getElementById('mgmt-lock').checked;
+  if(iface&&!lock&&!confirm(`Leave ${iface} unprotected?\n\nVLANs on it, adding it to a bridge and bringing it down will be allowed — any of them can cut off your access. Nothing involving it is kept after a reboot.`))return;
+  const r=await api('/api/config','POST',{management_interface:iface,protect_management:lock});
+  if(r.ok){sb('mgmt-status',iface?`✔ ${iface} ${lock?'protected':'NOT protected'}`:'✔ Saved (none chosen)','ok');loadAll();}
+  else sb('mgmt-status','✘ '+(r.error||r.stderr||'Error'),'err');}
 
 // ── API helper ─────────────────────────────────────────────────────────────
 const CSRF=document.querySelector('meta[name="csrf-token"]')?.content||'';
@@ -982,7 +1043,7 @@ async function reloadVlans(evt){
     const vlanNames=new Set((d.vlans||[]).map(v=>v.name));
     const brNames=new Set(d.bridges||[]);
     const eligible=(d.physical||[]).filter(p=>!vlanNames.has(p.name)&&!brNames.has(p.name)&&!p.name.includes('.'));
-    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';
+    ps.innerHTML=eligible.length?eligible.filter(mgmtOk).map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';
   }
   const d2=await api('/api/interfaces');
   if(d2){bridges=d2.bridges||{};unbridged=d2.unbridged||[];ifMeta=d2.meta||{};ifaces=d2.interfaces||[];}
@@ -1005,6 +1066,7 @@ function buildCard(iface){
   if(isMb) tags+=`<span class="tag tB">→${esc(meta.master)}</span>`;
   if(!up)  tags+=`<span class="tag tR">down</span>`;
   if(hasTC)tags+=`<span class="tag tG">● tc active</span>`;
+  if(isMgmt(iface))tags+=`<span class="tag tR" title="Management interface">MGMT</span>`;
   let banner='';
   if(isBr){const mbs=(bridges[iface]||{}).members||[],n=mbs.length||2;
     banner=`<div class="wbanner warn">Shows the <b>${n===2?'round-trip ':''}total</b> of its
@@ -1012,6 +1074,8 @@ function buildCard(iface){
       ${+(50/n).toFixed(2)}&nbsp;ms on each — replacing values set per member.</div>`;}
   else if(isMb){banner=`<div class="wbanner info">Member of <b>${esc(meta.master)}</b>
       — changes here apply to this member only; the bridge shows the new total.</div>`;}
+  if(isMgmt(iface)&&!isBr) banner+=`<div class="wbanner warn">Management interface — impairing it
+      slows or cuts your own access. Impairments on it are not kept after a reboot.</div>`;
   const fld=(k,lab,unit,mx,st)=>`<div class="field"><label for="${id}_${k}">${lab}</label>
       <div class="input-wrap"><input type="number" id="${id}_${k}" min="0" max="${mx}"${st?` step="${st}"`:''}
         value="${v({lat:'latency_ms',jit:'jitter_ms',loss:'loss_pct',dup:'duplicate_pct',
@@ -1181,6 +1245,7 @@ async function saveLabel(iface){
   labels[iface]=el.value.trim();}
 async function doApply(iface){
   const id=iface.replace(/[^a-z0-9]/gi,'_');
+  if(!mgmtRisk(iface,'Impairing it',true))return;
   editing.delete(`card-${id}`);
   const conf=getConf(iface); sb(`sb-${id}`,'Applying…','info');
   const r=await api(`/api/apply/${iface}`,'POST',conf);
@@ -1251,7 +1316,7 @@ function buildVlanTree(physical,vlans,bridgeNames){
       : `<span class="tag tB">Physical NIC</span>`;
     const stTag = s=>s?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>';
     rows+=`<tr class="phy-row">
-      <td><span class="iface-name">${esc(p.name)}</span></td>
+      <td><span class="iface-name">${esc(p.name)}</span>${isMgmt(p.name)?' <span class="tag tR" title="Management interface">MGMT</span>':''}</td>
       <td>${typeTag} ${toggle}</td>
       <td>${stTag(up)}</td>
       <td class="muted mono">${esc(p.mtu)}</td>
@@ -1307,7 +1372,7 @@ async function loadVlanTab(){
     !p.name.includes('.')       // not a sub-interface by name
   );
   ps.innerHTML=eligible.length
-    ?eligible.map(p=>`<option>${esc(p.name)}</option>`).join('')
+    ?eligible.filter(mgmtOk).map(p=>`<option>${esc(p.name)}</option>`).join('')
     :'<option disabled>No physical NICs found</option>';}
 async function doCreateVlan(){
   const parent=document.getElementById('vl-parent').value;
@@ -1315,6 +1380,7 @@ async function doCreateVlan(){
   const name=document.getElementById('vl-name').value.trim();
   if(!parent){sb('vl-status','Select parent','err');return;}
   if(vid<1||vid>4094){sb('vl-status','VLAN ID 1-4094','err');return;}
+  if(!mgmtRisk(parent,'Creating a VLAN on it'))return;
   sb('vl-status','Creating…','info');
   const r=await api('/api/vlans','POST',{parent,vlan_id:vid,name:name||undefined});
   if(r.ok){
@@ -1331,7 +1397,10 @@ async function doDelVlan(name){
 async function doVlanUp(name,up){
   await api(`/api/vlans/${name}/up`,'POST',{up}); loadVlanTab();}
 async function doIfUp(name,up){
-  await api(`/api/iface/${name}/up`,'POST',{up}); loadVlanTab();}
+  if(!up&&!mgmtRisk(name,'Bringing it down'))return;
+  const r=await api(`/api/iface/${name}/up`,'POST',{up});
+  if(r&&r.ok===false) alert(r.stderr||'Refused');
+  loadVlanTab();}
 async function showVlanStats(name){
   document.getElementById('m-title').textContent='Stats — '+name;
   document.getElementById('m-body').textContent='Loading…';
@@ -1344,7 +1413,7 @@ function renderBrTab(){
   ['nb-if1','nb-if2'].forEach(sid=>{
     const sel=document.getElementById(sid),cur=sel.value;
     sel.innerHTML='<option value="">— none —</option>';
-    unbridged.forEach(i=>sel.innerHTML+=`<option${i===cur?' selected':''}>${esc(i)}</option>`);});
+    unbridged.filter(mgmtOk).forEach(i=>sel.innerHTML+=`<option${i===cur?' selected':''}>${esc(i)}</option>`);});
   const tbody=document.getElementById('br-tbody');const entries=Object.entries(bridges);
   if(!entries.length){tbody.innerHTML='<tr><td colspan="4" class="empty">No bridges configured yet.</td></tr>';return;}
   const admin=ROLE==='admin';
@@ -1374,12 +1443,13 @@ async function _refreshVl(){
     document.getElementById('phy-tbody').innerHTML=buildVlanTree(d.physical||[],d.vlans||[],d.bridges||[]);
     const ps=document.getElementById('vl-parent');const vlanNames=new Set((d.vlans||[]).map(v=>v.name));const brNames=new Set(d.bridges||[]);
     const eligible=(d.physical||[]).filter(p=>!vlanNames.has(p.name)&&!brNames.has(p.name)&&!p.name.includes('.'));
-    ps.innerHTML=eligible.length?eligible.map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';}}
+    ps.innerHTML=eligible.length?eligible.filter(mgmtOk).map(p=>`<option>${esc(p.name)}</option>`).join(''):'<option disabled>No physical NICs found</option>';}}
 async function doCreateBridge(){
   const name=document.getElementById('nb-name').value.trim();
   const if1=document.getElementById('nb-if1').value,if2=document.getElementById('nb-if2').value;
   const stp=document.getElementById('nb-stp').checked;
   if(!name){sb('nb-status','Enter name','err');return;}
+  for(const i of [if1,if2]) if(i&&!mgmtRisk(i,'Adding it to a bridge (which removes its IP address)'))return;
   sb('nb-status','Creating…','info');
   const r=await api(`/api/bridges/${name}`,'POST',{stp});
   if(!r.ok){sb('nb-status','✘ '+r.stderr,'err');return;}
@@ -1398,8 +1468,8 @@ async function doDelBridge(name){
 async function doBrUp(name,up){
   await api(`/api/bridges/${name}/up`,'POST',{up});await _refreshBr();}
 async function promptAddMember(bridge){
-  const iface=prompt(`Add to ${bridge}\nAvailable: ${unbridged.join(', ')}`);
-  if(!iface)return;
+  const iface=prompt(`Add to ${bridge}\nAvailable: ${unbridged.filter(mgmtOk).join(', ')}`);
+  if(!iface||!mgmtRisk(iface,'Adding it to a bridge (which removes its IP address)'))return;
   const r=await api(`/api/bridges/${bridge}/members`,'POST',{iface});
   sb('br-status',r.ok?`✔ ${iface}→${bridge}`:'✘ '+r.stderr,r.ok?'ok':'err');
   await _refreshBr();}
@@ -1459,6 +1529,7 @@ async function openSettings(){
   if(r.role==='admin'){
     document.getElementById('timeout-section').style.display='block';
     document.getElementById('port-section').style.display='block';
+    document.getElementById('mgmt-section').style.display='block';
     sb('port-status','','info');
     await loadConfig();
   }
@@ -1512,6 +1583,7 @@ async function loadAll(){
   const d=await api('/api/interfaces');if(!d) return;
   ifaces=d.interfaces||[];bridges=d.bridges||{};ifMeta=d.meta||{};
   unbridged=d.unbridged||[];tcState=d.state||{};labels=d.labels||{};totals=d.totals||{};
+  mgmt=d.mgmt||mgmt;renderMgmtBanner();
   const brCnt=Object.keys(bridges).length;
   // Count only real interface-level tc entries:
   //   exclude bridge keys (their tc is applied to members, not the bridge itself)
