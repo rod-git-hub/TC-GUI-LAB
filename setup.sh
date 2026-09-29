@@ -11,6 +11,8 @@
 #   sudo bash setup.sh --reset-users    # never prompt, wipe accounts (fresh admin)
 #   sudo bash setup.sh --no-backup      # skip the pre-upgrade snapshot
 #   sudo bash setup.sh --port 8443      # dashboard port (1024-65535; default 5000)
+#   sudo bash setup.sh --protect-mgmt   # lock the management interface (--allow-mgmt: don't)
+#   sudo bash setup.sh --mgmt-iface IF  # say which interface that is (else: detected)
 #   sudo bash setup.sh --list-backups   # show snapshots available to roll back to
 #   sudo bash setup.sh --rollback       # restore the most recent snapshot
 #   sudo bash setup.sh --rollback NAME  # restore a specific one (see --list-backups)
@@ -55,13 +57,15 @@ PORT_MIN=1024
 PORT_MAX=65535
 PORT_ARG=""
 PORT_SET=0
+MGMT_IFACE_ARG=""
+MGMT_MODE=""            # "" = ask (or keep), protect, allow
 USERS_MODE="ask"
 DO_BACKUP=1
 ACTION="install"
 ROLLBACK_NAME=""
 
 usage() {
-    sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,28p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
@@ -71,6 +75,11 @@ while [ $# -gt 0 ]; do
         --reset-users)  USERS_MODE="reset" ;;
         --no-backup)    DO_BACKUP=0 ;;
         --port)         PORT_SET=1; PORT_ARG="${2:-}"; [ $# -gt 1 ] && shift ;;
+        --mgmt-iface)   MGMT_IFACE_ARG="${2:-}"; [ $# -gt 1 ] && shift
+                        [[ "$MGMT_IFACE_ARG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$ ]] || {
+                            echo "error: --mgmt-iface needs an interface name, got '${MGMT_IFACE_ARG}'" >&2; exit 1; } ;;
+        --protect-mgmt) MGMT_MODE="protect" ;;
+        --allow-mgmt)   MGMT_MODE="allow" ;;
         --list-backups) ACTION="list" ;;
         --rollback)
             ACTION="rollback"
@@ -388,6 +397,56 @@ else
     USERS_MODE="fresh"     # nothing to keep; first start creates admin/tclab123
 fi
 
+# ── 0b. The management interface — also asked up front ─────────────────────
+# The interface this host is managed through (the dashboard, SSH). Protected,
+# TC Lab refuses VLANs on it, bridge membership and bringing it down; either
+# way nothing involving it is kept after a reboot (see mgmt_guard.py). Asked
+# once: when the config does not name one yet, or when a flag says so.
+detect_mgmt() {
+    # The interface this admin's SSH session arrives on; else the default route's.
+    local ip="${SSH_CONNECTION:-}" dev=""      # unset when run from a console
+    ip="${ip%% *}"
+    [ -n "$ip" ] || ip=$(who -m 2>/dev/null | grep -oP '\(\K[0-9a-fA-F.:]+(?=\))' | head -1 || true)
+    [ -n "$ip" ] && dev=$(ip route get "$ip" 2>/dev/null | grep -oP ' dev \K\S+' | head -1 || true)
+    if [ -z "$dev" ] || [ "$dev" = "lo" ]; then
+        dev=$(ip route show default 2>/dev/null | grep -oP ' dev \K\S+' | head -1 || true)
+    fi
+    echo "$dev"
+}
+config_mgmt() {
+    local f
+    for f in "${INSTALL_DIR}/config.json" "${STATE_DIR}/config.json"; do
+        [ -f "$f" ] || continue
+        python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("management_interface") or "")' \
+            "$f" 2>/dev/null && return 0
+    done
+}
+MGMT_SET=""; MGMT_LOCK=""
+EXISTING_MGMT=$(config_mgmt | head -1 || true)
+if [ -n "$MGMT_IFACE_ARG" ] || [ -n "$MGMT_MODE" ] || [ -z "$EXISTING_MGMT" ]; then
+    MGMT_SET="${MGMT_IFACE_ARG:-${EXISTING_MGMT:-$(detect_mgmt)}}"
+    if [ -z "$MGMT_SET" ]; then
+        echo "[!] Could not detect the management interface — choose it later in"
+        echo "    Settings → Management Interface."
+    elif [ -z "$MGMT_MODE" ]; then
+        MGMT_MODE="protect"             # the default, and the answer when nobody is there
+        if [ -r /dev/tty ]; then
+            echo ""
+            echo "  Management interface: ${MGMT_SET}  (the one this host is reached through)"
+            echo ""
+            echo "    Protect it (recommended): TC Lab will not use it for VLANs or bridges,"
+            echo "    or bring it down — any of those can cut off your access to this host."
+            echo "    Either way, nothing involving it is kept after a reboot."
+            echo ""
+            printf "  Protect %s? [Y/n] " "${MGMT_SET}"
+            read -r reply < /dev/tty || reply=""
+            case "${reply}" in [Nn]*) MGMT_MODE="allow" ;; esac
+            echo ""
+        fi
+    fi
+    [ -n "$MGMT_SET" ] && { [ "$MGMT_MODE" = "allow" ] && MGMT_LOCK=false || MGMT_LOCK=true; }
+fi
+
 # ── 1. System dependencies ─────────────────────────────────────────────────
 # Debian/Ubuntu only. The app itself is distribution-agnostic, but this
 # installer is not and does not pretend to be.
@@ -470,6 +529,19 @@ PY
         echo "[!] Could not update the port in ${STATE_DIR}/config.json — it is not"
         echo "    valid JSON. Fix the file, then: sudo tc-lab set-port ${PORT_ARG}"
     fi
+fi
+if [ -n "$MGMT_SET" ]; then
+    python3 - "${STATE_DIR}/config.json" "$MGMT_SET" "$MGMT_LOCK" <<'PY' \
+      && echo "[*] Management interface: ${MGMT_SET} ($([ "$MGMT_LOCK" = true ] && echo protected || echo 'NOT protected'))" \
+      || echo "[!] Could not record the management interface in config.json"
+import json, sys
+path, iface, lock = sys.argv[1], sys.argv[2], sys.argv[3] == "true"
+with open(path) as f:
+    cfg = json.load(f)
+cfg["management_interface"], cfg["protect_management"] = iface, lock
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+PY
 fi
 CFG_PORT=$(grep -oP '"port"\s*:\s*\K[0-9]+' "${STATE_DIR}/config.json" 2>/dev/null || echo 5000)
 if [ "$CFG_PORT" -lt "$PORT_MIN" ]; then

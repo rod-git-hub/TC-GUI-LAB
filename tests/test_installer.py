@@ -40,6 +40,9 @@ def box(tmp_path):
     _exe(stubs / "apt-get", "exit 0")
     _exe(stubs / "systemctl", 'echo "systemctl $*" >> "$STUB_LOG"; exit 0')
     _exe(stubs / "sleep", "exit 0")
+    # `ip`, for the management-interface detection: every route leaves by eth0.
+    _exe(stubs / "ip", 'case "$*" in "route get"*) echo "192.0.2.9 via 192.0.2.1 dev eth0";; '
+                       '"route show default"*) echo "default via 192.0.2.1 dev eth0";; esac')
     # The service user in these tests is root, which exists — so this must
     # never run. If it does, the test fails loudly.
     _exe(stubs / "useradd", 'echo "useradd $*" >> "$STUB_LOG"; exit 1')
@@ -144,10 +147,13 @@ def test_upgrade_from_v921_moves_state_then_rolls_back(box):
     assert "Moving TC Lab's state" in out
     # Every state file moved byte-for-byte, and is gone from the code.
     for name, h in before.items():
-        assert digest(box.state / name) == h, name
+        if name != "config.json":           # gains the management-interface setting
+            assert digest(box.state / name) == h, name
         if not name.startswith("profiles/"):
             assert not (box.install / name).exists(), name
-    assert json.loads((box.state / "config.json").read_text())["idle_timeout_minutes"] == 45
+    cfg = json.loads((box.state / "config.json").read_text())
+    assert cfg["idle_timeout_minutes"] == 45 and cfg["port"] == 5000       # kept
+    assert cfg["management_interface"] == "eth0" and cfg["protect_management"] is True
     # User profile kept (in state), no longer mixed in with the shipped code.
     assert not (box.install / "profiles" / "my_custom.json").exists()
     assert set(shipped_profiles()) <= set(os.listdir(box.state / "profiles"))
@@ -229,8 +235,9 @@ def test_upgrade_with_port_keeps_other_settings(box):
                                "port": 5000}))
     port = free_port()
     setup(box, "--keep-users", "--port", str(port))
-    assert json.loads(cfg.read_text()) == {"idle_timeout_minutes": 45,
-                                           "bind_address": "10.0.0.1", "port": port}
+    kept = json.loads(cfg.read_text())
+    assert {k: kept[k] for k in ("idle_timeout_minutes", "bind_address", "port")} == \
+        {"idle_timeout_minutes": 45, "bind_address": "10.0.0.1", "port": port}
 
 
 @pytest.mark.parametrize("bad,msg", [("80", "between 1024"), ("x", "needs a number")])
@@ -307,3 +314,39 @@ def test_snapshot_is_labelled_with_the_version(box):
     setup(box, "--keep-users")
     label = next(box.backups.glob("*.tgz.version")).read_text().strip()
     assert label == "v9.2.1"
+
+
+# ── The management interface (v9.3) ──────────────────────────────────────────
+def cfg(box):
+    return json.loads((box.state / "config.json").read_text())
+
+
+def test_fresh_install_protects_the_detected_management_interface(box):
+    out = setup(box)                      # nobody at the prompt: protect
+    assert (cfg(box)["management_interface"], cfg(box)["protect_management"]) == ("eth0", True)
+    assert "Management interface: eth0 (protected)" in out
+
+
+def test_flags_choose_the_interface_and_allow_it(box):
+    setup(box, "--mgmt-iface", "eth5", "--allow-mgmt")
+    assert (cfg(box)["management_interface"], cfg(box)["protect_management"]) == ("eth5", False)
+
+
+def test_upgrade_keeps_the_choice_and_does_not_ask_again(box):
+    setup(box)
+    (box.state / "config.json").write_text(json.dumps(
+        {**cfg(box), "management_interface": "eth1", "protect_management": False}))
+    out = setup(box, "--keep-users")
+    assert (cfg(box)["management_interface"], cfg(box)["protect_management"]) == ("eth1", False)
+    assert "Management interface:" not in out and "Protect eth" not in out
+
+
+def test_upgrade_flag_changes_only_the_lock(box):
+    setup(box, "--allow-mgmt")
+    setup(box, "--keep-users", "--protect-mgmt")
+    assert (cfg(box)["management_interface"], cfg(box)["protect_management"]) == ("eth0", True)
+
+
+def test_bad_mgmt_iface_stops_before_anything_changes(box):
+    out = setup(box, "--mgmt-iface", "bad/x", ok=False)
+    assert "needs an interface name" in out and not (box.install / "app.py").exists()
