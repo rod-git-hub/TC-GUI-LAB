@@ -1,6 +1,6 @@
 # TC Lab — Release Notes
 
-## v9.3 — not yet released
+## v9.3 — 29 September 2026
 
 v9.3 takes TC Lab off root, lets you move the dashboard to another port, makes a
 bridge show what its path really has, and puts the documentation inside the
@@ -108,13 +108,25 @@ links to the project, its releases, and how to report a security issue.
 
 ### How this release was tested
 
-- **289 automated tests** (up from 157), including the real installer run in a
+- **315 automated tests** (up from 157), including the real installer run in a
   sandbox — a fresh install; an upgrade from v9.2.1, rollback, and upgrading again,
-  with every state file checked byte for byte — and a check that every link between
-  the documents lands on a real heading.
-- The port change run end to end over HTTPS: moved to a new port and back, same
-  process, still signed in.
-- The bridge totals and Help pages clicked through in the dashboard.
+  with every state file checked byte for byte — the real boot-restore script, and a
+  check that every link between the documents lands on a real heading.
+- **On a live lab host carrying real traffic:**
+  - the upgrade from v9.2.1: every state file moved intact, the lab unchanged;
+  - 39 end-to-end checks through the running service — VLANs, bridges, the split and
+    the totals, every netem setting, rate limiting, labels, profiles, settings,
+    accounts and roles — each confirmed in the kernel, first with and then without
+    `CAP_NET_RAW`, which is why it was removed;
+  - the port change under systemd: to a new port and back, same process, impairments
+    untouched;
+  - a rollback to v9.2.1 and an upgrade again;
+  - a cold reboot: back confined, lab rebuilt from scratch, impairments re-applied,
+    state unchanged, and all 39 checks again on the fresh kernel;
+  - the management-interface protection: detected and protected by the installer,
+    then 14 checks — refusals while protected, nothing kept while not — run against
+    a test interface, so the real management interface was never touched.
+- The bridge totals, the port change and Help clicked through in the dashboard.
 
 ---
 

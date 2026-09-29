@@ -1,4 +1,4 @@
-## [v9.3] - Unreleased
+## [v9.3] - 2026-09-29
 
 The service stops running as root; the dashboard port can be changed; a bridge
 shows the total of its members; and the documentation is built into the
@@ -53,7 +53,7 @@ installer does it. Upgrade notes: [docs/upgrading.md](docs/upgrading.md).
   rollback restores either layout, deciding from the restored unit; an upgrade reads
   the state directory and user back from the installed unit; new
   `TC_LAB_STATE_DIR` and `TC_LAB_USER` overrides.
-- Tests: 157 → 289. `tests/test_installer.py` runs the real `setup.sh` as fake root
+- Tests: 157 → 315. `tests/test_installer.py` runs the real `setup.sh` as fake root
   in a user namespace against scratch directories (fresh install, v9.2.1 → v9.3 →
   rollback → v9.3, snapshots, `--port`, stray state); `tests/test_help.py` fails if a
   link between the documents stops landing on a real heading.
