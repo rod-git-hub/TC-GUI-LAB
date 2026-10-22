@@ -1,6 +1,6 @@
 # TC Lab — Release Notes
 
-## v9.3.1 — not yet released
+## v9.3.1 — 22 October 2026
 
 A fix-up release from a code review of v9.3. Upgrade the same way
 (`git pull && sudo bash setup.sh --keep-users`, or from your clone of the release:
@@ -26,6 +26,18 @@ are no configuration or data changes.
 Dependencies were checked against the Python vulnerability database on 22 October
 2026: no known vulnerabilities. TC Lab contains no PHP and is not affected by the
 "PHP2Shell" flaws announced on 21 October 2026.
+
+### How this release was tested
+
+- **328 automated tests** (up from 315); 14 of the new or changed ones fail on v9.3,
+  so each fix is pinned by a test that catches the old behaviour.
+- **On a live lab host carrying real traffic:** the upgrade from v9.3 with the lab
+  unchanged, then 18 checks of the lock through the running service, using only
+  throw-away test VLANs and a test bridge — a management interface that is a VLAN,
+  one that is a bridge, and one that is a bridge member: while protected, deleting or
+  bringing down what it depends on was refused each time and nothing changed in the
+  kernel; everything unrelated still worked. Afterwards the lab, its impairments and
+  every state file were exactly as before.
 
 ---
 

@@ -1,4 +1,4 @@
-## [v9.3.1] - Unreleased
+## [v9.3.1] - 2026-10-22
 
 Fixes from a code review of v9.3. No configuration or data changes.
 
