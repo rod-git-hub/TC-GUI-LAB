@@ -1,3 +1,33 @@
+## [v9.3.1] - Unreleased
+
+Fixes from a code review of v9.3. No configuration or data changes.
+
+### Security
+- **Management-interface lock: what it depends on.** New `mgmt_guard.lifeline()`:
+  the interface itself (NIC, VLAN or bridge), its parent NIC when it is a VLAN (by
+  `ip`'s parent or the `<parent>.<id>` name) and any bridge it is a member of. While
+  protected, VLAN delete/down, bridge delete/down and interface down are refused (403)
+  for anything on it; `/api/interfaces` returns `mgmt.lifeline` and the page hides
+  those buttons. v9.3 only guarded `iface down` of the interface itself.
+- **Help:** external images become a link only for http(s); other schemes
+  (`javascript:`, `data:`) are dropped.
+- Port validation errors return a fixed message instead of the exception text
+  (CodeQL #22, previously dismissed as a false positive).
+
+### Fixed
+- Unprotected: the page warns before deleting/downing what the management interface
+  depends on, and before impairing a bridge it is a member of.
+- Boot tc re-apply passes the VLAN list, so custom-named VLANs on the management
+  interface are skipped too.
+- setup.sh `config_mgmt` reads the install directory's config.json only under a
+  pre-9.3 unit (otherwise it is a stray).
+- Reload (TC page and top bar) discards values typed but not applied.
+
+### Changed
+- `_mgmt_related()` removed (dead); `mgmt_guard` filters reuse `is_related()`;
+  state saves skip the `ip` VLAN listing when no management interface is set.
+- Tests: 315 → 328.
+
 ## [v9.3] - 2026-09-29
 
 The service stops running as root; the dashboard port can be changed; a bridge

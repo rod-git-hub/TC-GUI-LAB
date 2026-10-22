@@ -303,8 +303,10 @@ Open it with ⚙ in the top bar.
   `sudo tc-lab set-port <old port>` and `sudo systemctl restart tc_lab` put it back.
 - **Management Interface** *(admins only)* — the interface you reach TC Lab (and SSH)
   through, and whether it is **protected**. Protected, TC Lab refuses a VLAN on it,
-  adding it or its VLANs to a bridge, and bringing it down — any of those can cut off
-  your access (adding an interface to a bridge removes its IP address). Unprotected,
+  adding it or its VLANs to a bridge, and deleting or bringing down it or anything it
+  depends on — the network card under it, or a bridge it is in (those buttons are
+  hidden). Any of those can cut off your access (adding an interface to a bridge
+  removes its IP address). Unprotected,
   they are allowed after a warning, at your own risk. Either way, **nothing involving
   it is kept after a reboot**: the interface always comes back in its normal state.
   The installer asks about this once; with nothing chosen yet, Settings suggests the
@@ -387,7 +389,7 @@ account — recreating it if it had been deleted.
 - **After an upgrade, hard-refresh the browser** (Ctrl-Shift-R). An old cached page
   makes every action fail with *"The CSRF token is missing."*
 - **The page refreshes itself every 20 seconds.** Impairment values you have typed but
-  not yet applied are kept until you click Apply or Reset.
+  not yet applied are kept until you click Apply or Reset; **Reload** discards them.
 - **Keep the dashboard on the management network.** Anyone who can reach port 5000
   can try to sign in; see [users-and-security.md](users-and-security.md).
 - **Something not working?** Service logs: `journalctl -u tc_lab -n 100`. More in

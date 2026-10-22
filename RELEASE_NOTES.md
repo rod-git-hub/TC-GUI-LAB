@@ -1,5 +1,34 @@
 # TC Lab — Release Notes
 
+## v9.3.1 — not yet released
+
+A fix-up release from a code review of v9.3. Upgrade the same way
+(`git pull && sudo bash setup.sh --keep-users`, or from your clone of the release:
+`git fetch --tags && git checkout v9.3.1 && sudo bash setup.sh --keep-users`); there
+are no configuration or data changes.
+
+- **The management-interface lock now covers what that interface depends on.**
+  While it is protected, TC Lab also refuses deleting or bringing down the
+  management interface when it is a VLAN or a bridge, the network card under it when
+  it is a VLAN, and any bridge it is a member of — and hides those buttons. In v9.3 a
+  management interface that was a bridge (such as `br0`) or a VLAN could still be
+  deleted or taken down. A management interface on a plain network card was already
+  fully covered.
+- **More warnings when it is not protected:** before deleting or downing what it
+  depends on, and before impairing a bridge it is a member of.
+- **Help:** an image in the documentation whose address is not a web address is now
+  dropped, instead of becoming a clickable link.
+- **Reload** now discards impairment values you typed but did not apply.
+- Smaller fixes: boot re-apply recognises VLANs on the management interface that have
+  custom names; the installer ignores a stray `config.json` in the install directory
+  when deciding the management-interface question; port errors show a fixed message.
+
+Dependencies were checked against the Python vulnerability database on 22 October
+2026: no known vulnerabilities. TC Lab contains no PHP and is not affected by the
+"PHP2Shell" flaws announced on 21 October 2026.
+
+---
+
 ## v9.3 — 29 September 2026
 
 v9.3 takes TC Lab off root, lets you move the dashboard to another port, makes a

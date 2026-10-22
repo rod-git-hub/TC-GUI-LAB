@@ -46,7 +46,7 @@ DATA = {
     "/api/interfaces": {"interfaces": ifaces, "bridges": bridges,
                         "unbridged": ["eth0", "eth1"], "meta": meta, "state": state,
                         "totals": totals,
-                        "mgmt": {"interface": "eth0", "locked": True, "related": ["eth0"]},
+                        "mgmt": {"interface": "eth0", "locked": True, "related": ["eth0"], "lifeline": ["eth0"]},
                         "labels": {"br-wan1": "Branch office uplink",
                                    "eth1.100": "MPLS circuit"}},
     "/api/vlans": {"vlans": [{"name": f"eth1.{v}", "parent": "eth1", "vlan_id": v,
