@@ -47,7 +47,27 @@ def related(mgmt, vlans=()):
 
 
 def is_related(name, mgmt, vlans=()):
+    """True for the management interface itself or any VLAN on it."""
     return bool(mgmt) and (name in related(mgmt, vlans) or str(name).startswith(mgmt + "."))
+
+
+def lifeline(mgmt, vlans=(), bridges=None):
+    """What the management interface cannot do without: itself, the NIC it sits
+    on when it is a VLAN (by `ip`'s parent, or the `<parent>.<id>` name), and any
+    bridge it is a member of. Deleting any of these, or bringing one down, cuts
+    off access — so while protected, those are refused too."""
+    if not mgmt:
+        return set()
+    out = {mgmt}
+    for v in vlans or ():
+        if v.get("name") == mgmt and v.get("parent"):
+            out.add(v["parent"])
+    if "." in mgmt:
+        out.add(mgmt.rsplit(".", 1)[0])
+    for br, info in (bridges or {}).items():
+        if mgmt in ((info or {}).get("members") or []):
+            out.add(br)
+    return out
 
 
 def filter_net_config(conf, mgmt):
@@ -59,18 +79,17 @@ def filter_net_config(conf, mgmt):
     bridges = dict(conf.get("bridges") or {})
     if not mgmt:
         return {"bridges": bridges, "vlans": vlans}, []
-    rel = related(mgmt, vlans)
     dropped = []
     keep_vlans = []
     for v in vlans:
-        if v.get("name") in rel:
+        if is_related(v.get("name"), mgmt, vlans):
             dropped.append(v.get("name"))
         else:
             keep_vlans.append(v)
     keep_bridges = {}
     for br, info in bridges.items():
         members = (info or {}).get("members") or []
-        if any(m in rel or str(m).startswith(mgmt + ".") for m in members):
+        if any(is_related(m, mgmt, vlans) for m in members):
             dropped.append(br)
         else:
             keep_bridges[br] = info
@@ -80,6 +99,4 @@ def filter_net_config(conf, mgmt):
 def filter_state(state, mgmt, vlans=()):
     """state.json content without impairments on the management interface (or its
     VLANs): they apply now, but are never re-applied after a reboot."""
-    rel = related(mgmt, vlans)
-    return {k: v for k, v in (state or {}).items()
-            if k not in rel and not (mgmt and str(k).startswith(mgmt + "."))}
+    return {k: v for k, v in (state or {}).items() if not is_related(k, mgmt, vlans)}

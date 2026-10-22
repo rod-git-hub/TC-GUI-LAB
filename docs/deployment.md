@@ -206,7 +206,9 @@ adding it to a bridge removes its IP address, and bringing it down or impairing 
 cuts off access.
 
 - **Protected** (the default): TC Lab refuses a VLAN on it, adding it or its VLANs to a
-  bridge, bringing it down, and importing a config that does any of these.
+  bridge, importing a config that does either, and deleting or bringing down anything
+  it depends on — itself (a NIC, VLAN or bridge), the NIC under it when it is a VLAN,
+  or a bridge it is in.
 - **Not protected:** allowed after a warning, at your own risk.
 - **Either way, nothing involving it is kept:** such VLANs and bridges are left out of
   the saved topology — a bridge with it as a member is not rebuilt at all — and

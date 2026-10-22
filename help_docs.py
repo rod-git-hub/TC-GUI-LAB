@@ -111,9 +111,10 @@ class _HelpLinks(Treeprocessor):
         u = urlsplit(img.get("src", ""))
         if u.scheme or u.netloc:
             # Hosted elsewhere: the dashboard only loads its own images, and a
-            # lab network may have no internet. Badges are decoration; anything
-            # else becomes a link to open it online.
-            if u.netloc == "img.shields.io":
+            # lab network may have no internet. Badges are decoration; any other
+            # web image becomes a link to open it online. Anything that is not
+            # http(s) — javascript:, data:, … — is dropped, never made a link.
+            if u.scheme not in ("http", "https") or u.netloc == "img.shields.io":
                 _drop(parent, img)
                 return
             a = etree.Element("a", {"href": img.get("src")})

@@ -9,8 +9,9 @@ for internet-facing deployment** and by design manipulates the host's live netwo
 
 | Version | Supported |
 |---|---|
-| v9.3 (latest)   | ✅ |
-| v9.2 – v9.2.1   | ✅ — upgrading to v9.3 is recommended (it stops running as root) |
+| v9.3.1 (latest) | ✅ |
+| v9.3            | ✅ — upgrading to v9.3.1 is recommended (it closes gaps in the management-interface lock) |
+| v9.2 – v9.2.1   | ✅ — upgrading to v9.3.1 is recommended (it stops running as root) |
 | v9.0 – v9.1     | ⚠️ upgrade recommended (before the security hardening) |
 | older           | ❌ |
 

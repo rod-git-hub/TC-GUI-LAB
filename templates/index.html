@@ -912,7 +912,7 @@ body.is-admin .tab.admin-only{display:flex}
 <script>
 let ifaces=[],bridges={},ifMeta={},unbridged=[],tcState={},profiles={},labels={},totals={};
 let helpIndex=null,helpPage=null;      // Help: page list from the server, page shown
-let mgmt={interface:'',locked:false,related:[]};   // the management interface, from the server
+let mgmt={interface:'',locked:false,related:[],lifeline:[]};   // the management interface, from the server
 // Using the management interface can cut off access to this dashboard. Locked:
 // the server refuses it, so pickers leave it out. Unlocked: allowed after a
 // warning. Impairing it is never blocked, but always warned about.
@@ -923,6 +923,15 @@ function mgmtRisk(n,what,always){
   return confirm(`${n} is the management interface — how you reach this dashboard (and SSH).\n\n`
     +`${what} can cut off your access immediately.\n\n`
     +`It is never kept after a reboot: the interface comes back normal then.\n\nContinue at your own risk?`);}
+// What the management interface depends on (itself, its parent NIC, a bridge it
+// is in): deleting or downing one cuts off access. Protected: no such buttons
+// (the server refuses anyway). Unprotected: warn first.
+function guarded(n){return mgmt.locked&&(mgmt.lifeline||[]).includes(n);}
+function lifelineRisk(n,what){
+  if(!(mgmt.lifeline||[]).includes(n)||mgmt.locked) return true;
+  return confirm(`${n} ${n===mgmt.interface?'is':'carries'} the management interface (${mgmt.interface}) — how you reach this dashboard (and SSH).\n\n`
+    +`${what} can cut off your access immediately.\n\nContinue at your own risk?`);}
+function bridgeMgmtMember(br){return ((bridges[br]||{}).members||[]).find(isMgmt);}
 function renderMgmtBanner(){
   const m=mgmt.interface
     ?(mgmt.locked
@@ -1246,6 +1255,8 @@ async function saveLabel(iface){
 async function doApply(iface){
   const id=iface.replace(/[^a-z0-9]/gi,'_');
   if(!mgmtRisk(iface,'Impairing it',true))return;
+  const mm=bridges[iface]&&bridgeMgmtMember(iface);
+  if(mm&&!mgmtRisk(mm,`Impairing ${iface}, which it is a member of,`,true))return;
   editing.delete(`card-${id}`);
   const conf=getConf(iface); sb(`sb-${id}`,'Applying…','info');
   const r=await api(`/api/apply/${iface}`,'POST',conf);
@@ -1322,7 +1333,7 @@ function buildVlanTree(physical,vlans,bridgeNames){
       <td class="muted mono">${esc(p.mtu)}</td>
       <td><div class="actions">${admin?`
         <button class="bG btn-xs" title="Bring up" onclick="doIfUp('${p.name}',true)"><svg class="ic"><use href="#i-up"/></svg>Up</button>
-        <button class="bR btn-xs" title="Bring down" onclick="doIfUp('${p.name}',false)"><svg class="ic"><use href="#i-down"/></svg>Down</button>
+        ${guarded(p.name)?'':`<button class="bR btn-xs" title="Bring down" onclick="doIfUp('${p.name}',false)"><svg class="ic"><use href="#i-down"/></svg>Down</button>`}
       `:'<span class="muted">—</span>'}</div></td></tr>`;
     // VLAN child rows (hidden by default)
     kids.forEach(v=>{
@@ -1335,9 +1346,9 @@ function buildVlanTree(physical,vlans,bridgeNames){
         <td class="muted mono">${esc(v.mtu)}</td>
         <td><div class="actions">
           ${admin?`<button class="bG btn-xs" title="Bring up" onclick="doVlanUp('${v.name}',true)"><svg class="ic"><use href="#i-up"/></svg></button>
-          <button class="bR btn-xs" title="Bring down" onclick="doVlanUp('${v.name}',false)"><svg class="ic"><use href="#i-down"/></svg></button>`:''}
+          ${guarded(v.name)?'':`<button class="bR btn-xs" title="Bring down" onclick="doVlanUp('${v.name}',false)"><svg class="ic"><use href="#i-down"/></svg></button>`}`:''}
           <button class="bY btn-xs" title="Statistics" onclick="showVlanStats('${v.name}')"><svg class="ic"><use href="#i-chart"/></svg></button>
-          ${admin?`<button class="bR btn-xs" title="Delete VLAN" onclick="doDelVlan('${v.name}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:''}
+          ${admin&&!guarded(v.name)?`<button class="bR btn-xs" title="Delete VLAN" onclick="doDelVlan('${v.name}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:''}
         </div></td></tr>`;
     });
   });
@@ -1349,7 +1360,7 @@ function buildVlanTree(physical,vlans,bridgeNames){
       <td><span class="tag tP">802.1Q · VLAN ${esc(v.vlan_id)}</span> <span class="muted">parent: ${esc(v.parent)}</span></td>
       <td>${vup?'<span class="tag tG">up</span>':'<span class="tag tR">down</span>'}</td>
       <td class="muted mono">${esc(v.mtu)}</td>
-      <td><div class="actions">${admin?`<button class="bR btn-xs" title="Delete VLAN" onclick="doDelVlan('${v.name}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:'<span class="muted">—</span>'}</div></td></tr>`;
+      <td><div class="actions">${admin&&!guarded(v.name)?`<button class="bR btn-xs" title="Delete VLAN" onclick="doDelVlan('${v.name}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:'<span class="muted">—</span>'}</div></td></tr>`;
   });
   return rows||'<tr><td colspan="5" class="empty">No physical interfaces found.</td></tr>';
 }
@@ -1390,14 +1401,18 @@ async function doCreateVlan(){
     await _refreshVl();}
   else sb('vl-status','✘ '+(r.stderr||'Error'),'err');}
 async function doDelVlan(name){
+  if(!lifelineRisk(name,'Deleting it'))return;
   if(!confirm(`Delete ${name}?`))return;
   const r=await api(`/api/vlans/${name}`,'DELETE');
   if(r.ok){await _refreshVl();}
   else alert('Error: '+r.stderr);}
 async function doVlanUp(name,up){
-  await api(`/api/vlans/${name}/up`,'POST',{up}); loadVlanTab();}
+  if(!up&&!lifelineRisk(name,'Bringing it down'))return;
+  const r=await api(`/api/vlans/${name}/up`,'POST',{up});
+  if(r&&r.ok===false) alert(r.stderr||'Refused');
+  loadVlanTab();}
 async function doIfUp(name,up){
-  if(!up&&!mgmtRisk(name,'Bringing it down'))return;
+  if(!up&&!lifelineRisk(name,'Bringing it down'))return;
   const r=await api(`/api/iface/${name}/up`,'POST',{up});
   if(r&&r.ok===false) alert(r.stderr||'Refused');
   loadVlanTab();}
@@ -1426,12 +1441,12 @@ function renderBrTab(){
       <td><span class="iface-name" style="color:var(--amber)">${esc(br)}</span></td>
       <td><div class="actions">${st}
         ${admin?`<button class="bG btn-xs" title="Bring up" onclick="doBrUp('${br}',true)"><svg class="ic"><use href="#i-up"/></svg></button>
-        <button class="bR btn-xs" title="Bring down" onclick="doBrUp('${br}',false)"><svg class="ic"><use href="#i-down"/></svg></button>`:''}</div></td>
+        ${guarded(br)?'':`<button class="bR btn-xs" title="Bring down" onclick="doBrUp('${br}',false)"><svg class="ic"><use href="#i-down"/></svg></button>`}`:''}</div></td>
       <td><div class="actions">${mbHtml||'<span class="muted">none</span>'}
         ${admin&&mbs.length<2?`<button class="bB btn-xs" title="Add member" onclick="promptAddMember('${br}')"><svg class="ic"><use href="#i-plus"/></svg></button>`:''}</div></td>
       <td><div class="actions">
         <button class="bY btn-xs" title="Bridge statistics" onclick="showBrStats('${br}')"><svg class="ic"><use href="#i-chart"/></svg></button>
-        ${admin?`<button class="bR btn-xs" title="Delete bridge" onclick="doDelBridge('${br}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:''}</div></td></tr>`;
+        ${admin&&!guarded(br)?`<button class="bR btn-xs" title="Delete bridge" onclick="doDelBridge('${br}')"><svg class="ic"><use href="#i-trash"/></svg></button>`:''}</div></td></tr>`;
   }).join('');}
 async function _refreshBr(){
   const d=await api('/api/interfaces');
@@ -1461,12 +1476,16 @@ async function doCreateBridge(){
                                :`✔ ${name} created`,failed.length?'warn':'ok');
   await _refreshBr();}
 async function doDelBridge(name){
+  if(!lifelineRisk(name,'Deleting it'))return;
   if(!confirm(`Delete ${name}?`))return;
   const r=await api(`/api/bridges/${name}`,'DELETE');
   sb('br-status',r.ok?`✔ ${name} deleted`:'✘ '+(r.stderr||'Error'),r.ok?'ok':'err');
   await _refreshBr();}
 async function doBrUp(name,up){
-  await api(`/api/bridges/${name}/up`,'POST',{up});await _refreshBr();}
+  if(!up&&!lifelineRisk(name,'Bringing it down'))return;
+  const r=await api(`/api/bridges/${name}/up`,'POST',{up});
+  if(r&&r.ok===false) alert(r.stderr||'Refused');
+  await _refreshBr();}
 async function promptAddMember(bridge){
   const iface=prompt(`Add to ${bridge}\nAvailable: ${unbridged.filter(mgmtOk).join(', ')}`);
   if(!iface||!mgmtRisk(iface,'Adding it to a bridge (which removes its IP address)'))return;
@@ -1749,6 +1768,7 @@ async function doResetPassword(){
 
 // Topbar / page refresh — spins the icon instead of replacing button text.
 async function doRefresh(btn){
+  editing.clear();            // Reload discards values typed but not applied
   btn.classList.add('spinning'); btn.disabled=true;
   try{ await loadAll(); }
   finally{ btn.classList.remove('spinning'); btn.disabled=false; }

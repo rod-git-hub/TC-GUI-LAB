@@ -1,6 +1,6 @@
 # Upgrading TC Lab
 
-For an existing v9.x install, to the latest release (**v9.3**). It takes a couple
+For an existing v9.x install, to the latest release (**v9.3.1**). It takes a couple
 of minutes, almost all of it package and Python dependency checks while the old
 version keeps running. The service restarts once, at the end; the web UI is
 unavailable for a few seconds.
