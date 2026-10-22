@@ -13,7 +13,7 @@ from auth           import (auth_bp, login_manager, limiter, get_or_create_secre
 from tc_manager     import (apply_netem, remove_qdisc, get_qdisc_stats,
                              list_interfaces, detect_all_tc_configs, split_config_for_members,
                              combine_member_configs)
-from ports          import DEFAULT_PORT, parse_port, port_available
+from ports          import DEFAULT_PORT, PORT_MIN, PORT_MAX, parse_port, port_available
 import help_docs
 import mgmt_guard
 from bridge_manager import (create_bridge, delete_bridge, add_member, remove_member,
@@ -123,6 +123,9 @@ def _save_json(p, data):
 # ── Management interface (see mgmt_guard.py) ───────────────────────────────────
 MGMT_LOCKED_MSG = ("{} is the management interface, and it is protected. To use it anyway — "
                    "at your own risk — unlock it in Settings → Management Interface.")
+MGMT_LIFELINE_MSG = ("{} carries the management interface {}, which is protected: deleting it "
+                     "or bringing it down would cut off access. To do it anyway — at your own "
+                     "risk — unlock it in Settings → Management Interface.")
 
 def _mgmt():
     """(management interface, locked) from the current settings."""
@@ -135,13 +138,29 @@ def _vlans_or_none():
         logger.warning("Cannot list VLANs: %s", e)
         return []
 
-def _mgmt_related():
-    return mgmt_guard.related(_mgmt()[0], _vlans_or_none())
+def _bridges_or_none():
+    try:
+        return get_all_bridges()
+    except Exception as e:
+        logger.warning("Cannot list bridges: %s", e)
+        return {}
+
+def _refuse_if_lifeline(name):
+    """While protected, refuse deleting or bringing down anything the management
+    interface depends on (mgmt_guard.lifeline): itself — a NIC, VLAN or bridge —
+    its parent NIC, or a bridge it is in. Returns a response, or None if allowed."""
+    mgmt, locked = _mgmt()
+    if locked and name in mgmt_guard.lifeline(mgmt, _vlans_or_none(), _bridges_or_none()):
+        msg = MGMT_LOCKED_MSG.format(mgmt) if name == mgmt else MGMT_LIFELINE_MSG.format(name, mgmt)
+        return jsonify({"ok": False, "stderr": msg}), 403
+    return None
 
 def _save_state():
     """state.json, minus impairments on the management interface: they apply now,
     but must never come back after a reboot."""
-    _save_json(STATE_FILE, mgmt_guard.filter_state(_state, _mgmt()[0], _vlans_or_none()))
+    mgmt = _mgmt()[0]
+    vlans = _vlans_or_none() if mgmt else []      # no `ip` call when there is no mgmt
+    _save_json(STATE_FILE, mgmt_guard.filter_state(_state, mgmt, vlans))
 
 def save_net_config():
     """Snapshot current bridges+members and VLANs to network_config.json — never
@@ -224,10 +243,11 @@ def _reapply_tc(saved, bridge_names):
     logger.info("Re-applying %d saved tc rule(s)...", len(saved))
     ok_count = 0
     mgmt, _ = _mgmt()
+    vlans = _vlans_or_none() if mgmt else []
     for iface, config in saved.items():
         if iface in bridge_names:
             continue
-        if mgmt_guard.is_related(iface, mgmt):
+        if mgmt_guard.is_related(iface, mgmt, vlans):
             logger.warning("  not re-applying tc on the management interface: %s", iface)
             continue
         if not config or not any(float(v) > 0 for v in config.values()):
@@ -424,8 +444,10 @@ def api_interfaces():
                    "mtu": link.get("mtu", "")}
     totals = {br: _bridge_total(bridges, br) for br in bridges}
     mgmt, locked = _mgmt()
+    vlans = _vlans_or_none() if mgmt else []
     mgmt_info = {"interface": mgmt, "locked": locked,
-                 "related": sorted(mgmt_guard.related(mgmt, _vlans_or_none()))}
+                 "related": sorted(mgmt_guard.related(mgmt, vlans)),
+                 "lifeline": sorted(mgmt_guard.lifeline(mgmt, vlans, bridges))}
     return jsonify({"interfaces": ifaces, "bridges": bridges, "unbridged": unbridged,
                     "meta": meta, "state": _state, "labels": _labels, "totals": totals,
                     "mgmt": mgmt_info})
@@ -553,16 +575,17 @@ def api_mgmt_suggest():
 # ── Service port ───────────────────────────────────────────────────────────────
 # Changing the port means listening somewhere else, which a running server
 # cannot do — so TC Lab saves the new port and replaces itself with a fresh
-# copy of the same program (execve), which starts on it. The process, its two
-# capabilities and the systemd service all carry on; bridges, VLANs and
+# copy of the same program (execve), which starts on it. The process, its
+# capability and the systemd service all carry on; bridges, VLANs and
 # impairments in the kernel are not touched (see TC_LAB_RESTARTED in _init).
 RESTART_DELAY_S = 1.0          # long enough for the JSON reply to reach the browser
 
 def _set_port(value):
     try:
         port = parse_port(value)
-    except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
+    except ValueError:
+        return jsonify({"ok": False, "error":
+                        f"The port must be a whole number from {PORT_MIN} to {PORT_MAX}"}), 400
     current = _config.get("port", DEFAULT_PORT)
     if port == current:
         return jsonify({"ok": True, "port": port, "restarting": False})
@@ -669,7 +692,10 @@ def api_create_bridge(name):
 @login_required
 @admin_required
 def api_delete_bridge(name):
-    r = delete_bridge(vname(name))
+    name = vname(name)
+    if refused := _refuse_if_lifeline(name):
+        return refused
+    r = delete_bridge(name)
     if r["ok"]: save_net_config()          # ← persist
     return jsonify(r)
 
@@ -678,7 +704,10 @@ def api_delete_bridge(name):
 @admin_required
 def api_bridge_updown(name):
     data = request.get_json(silent=True) or {}
-    return jsonify(set_bridge_up(vname(name), up=bool(data.get("up", True))))
+    name, up = vname(name), bool(data.get("up", True))
+    if not up and (refused := _refuse_if_lifeline(name)):
+        return refused
+    return jsonify(set_bridge_up(name, up=up))
 
 @app.route("/api/bridges/<name>/members", methods=["POST"])
 @login_required
@@ -740,7 +769,10 @@ def api_create_vlan():
 @login_required
 @admin_required
 def api_delete_vlan(name):
-    r = delete_vlan(vname(name))
+    name = vname(name)
+    if refused := _refuse_if_lifeline(name):
+        return refused
+    r = delete_vlan(name)
     if r["ok"]: save_net_config()          # ← persist
     return jsonify(r)
 
@@ -749,7 +781,10 @@ def api_delete_vlan(name):
 @admin_required
 def api_vlan_up(name):
     data = request.get_json(silent=True) or {}
-    return jsonify(set_iface_up(vname(name), up=bool(data.get("up", True))))
+    name, up = vname(name), bool(data.get("up", True))
+    if not up and (refused := _refuse_if_lifeline(name)):
+        return refused
+    return jsonify(set_iface_up(name, up=up))
 
 @app.route("/api/vlans/<name>/stats")
 @login_required
@@ -761,9 +796,8 @@ def api_vlan_stats(name): return jsonify(get_iface_stats(vname(name)))
 def api_iface_up(name):
     data = request.get_json(silent=True) or {}
     name, up = vname(name), bool(data.get("up", True))
-    mgmt, locked = _mgmt()
-    if locked and not up and name == mgmt:
-        return jsonify({"ok": False, "stderr": MGMT_LOCKED_MSG.format(mgmt)}), 403
+    if not up and (refused := _refuse_if_lifeline(name)):
+        return refused
     return jsonify(set_iface_up(name, up=up))
 
 # ── Profiles ───────────────────────────────────────────────────────────────────

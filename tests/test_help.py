@@ -71,7 +71,8 @@ def test_hostile_markdown_is_neutralised():
     src = ('# T <script>alert(1)</script>\n\n<div onclick="x()">block</div>\n\n'
            'x <img src=x onerror=alert(1)> <b>b</b>\n\n'
            '[a](javascript:alert(1)) [b](data:text/html,x) [c](//evil.example/) [d](../../x)\n'
-           '![e](img/evil.svg) ![f](../../../etc/p.png) ![g](img/01-login.png)\n')
+           '![e](img/evil.svg) ![f](../../../etc/p.png) ![g](img/01-login.png)\n'
+           '![h](javascript:alert(2)) ![i](data:image/png;base64,AAAA)\n')
     html = markdown.Markdown(extensions=[
         "tables", help_docs.TocExtension(slugify=help_docs._github_slug),
         help_docs._HelpExtension("docs/x.md", "guide", "9.9")]).convert(src)
@@ -82,6 +83,7 @@ def test_hostile_markdown_is_neutralised():
         '<img alt="g" loading="lazy" src="/help/img/01-login.png" />']
     assert "javascript:" not in html and "data:text" not in html and "evil.example" not in html
     assert "evil.svg" not in html and "etc/p.png" not in html
+    assert "alert(2)" not in html and "base64" not in html     # images: never made links
     assert 'src="/help/img/01-login.png"' in html
 
 

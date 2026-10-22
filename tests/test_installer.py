@@ -350,3 +350,15 @@ def test_upgrade_flag_changes_only_the_lock(box):
 def test_bad_mgmt_iface_stops_before_anything_changes(box):
     out = setup(box, "--mgmt-iface", "bad/x", ok=False)
     assert "needs an interface name" in out and not (box.install / "app.py").exists()
+
+
+def test_stray_install_dir_config_never_overrides_the_management_choice(box):
+    """v9.3.1: under a v9.3 unit, a config.json in the install directory is a
+    stray (e.g. app.py run by hand there) and must not decide the question."""
+    setup(box)
+    (box.state / "config.json").write_text(json.dumps(
+        {**cfg(box), "management_interface": "eth1", "protect_management": False}))
+    (box.install / "config.json").write_text('{"idle_timeout_minutes": 30}')
+    out = setup(box, "--keep-users")
+    assert (cfg(box)["management_interface"], cfg(box)["protect_management"]) == ("eth1", False)
+    assert "Protect eth" not in out

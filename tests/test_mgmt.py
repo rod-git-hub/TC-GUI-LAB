@@ -177,7 +177,8 @@ def test_settings_api(lab):
 def test_page_is_told_which_interfaces_are_management(lab):
     client, _ = lab
     info = client().get("/api/interfaces").get_json()["mgmt"]
-    assert info == {"interface": "eth0", "locked": True, "related": ["eth0", "eth0.100", "wan1"]}
+    assert info == {"interface": "eth0", "locked": True, "related": ["eth0", "eth0.100", "wan1"],
+                    "lifeline": ["eth0"]}
 
 
 def test_suggestion_is_admin_only(lab, monkeypatch):
@@ -209,3 +210,81 @@ def test_boot_restore_never_rebuilds_it(tmp_path):
     assert "eth1.200" in calls and "br-lab" in calls                # the lab is rebuilt
     assert "eth0" not in calls and "br-mix" not in calls             # the management side is not
     assert "Skipping (uses the management interface eth0)" in r.stdout
+
+
+# ── v9.3.1: what the management interface depends on ─────────────────────────
+def test_lifeline():
+    assert mg.lifeline("eth0") == {"eth0"}
+    # a VLAN: its parent NIC, by `ip`'s record or by name
+    assert mg.lifeline("eth0.10", [{"name": "eth0.10", "parent": "eth0"}]) == {"eth0.10", "eth0"}
+    assert mg.lifeline("eth0.10") == {"eth0.10", "eth0"}
+    # a bridge it is a member of
+    assert mg.lifeline("eth0", bridges={"br0": {"members": ["eth0", "eth1"]},
+                                        "br-lab": {"members": ["eth1.100"]}}) == {"eth0", "br0"}
+    assert mg.lifeline("") == set()
+
+
+@pytest.fixture
+def system(lab, monkeypatch):
+    """lab, plus recorded VLAN/bridge deletes and bridge up/down."""
+    client, calls = lab
+    monkeypatch.setattr(app, "delete_vlan", lambda n: calls.append(("del-vlan", n)) or {"ok": True})
+    monkeypatch.setattr(app, "delete_bridge", lambda n: calls.append(("del-br", n)) or {"ok": True})
+    monkeypatch.setattr(app, "set_bridge_up", lambda n, up=True: calls.append(("br-up", n, up)) or {"ok": True})
+    return client, calls
+
+
+@pytest.mark.parametrize("mgmt,bridges,request_", [
+    # management interface on a VLAN: the VLAN and its parent NIC
+    ("eth0.10", {}, ("DELETE", "/api/vlans/eth0.10", None)),
+    ("eth0.10", {}, ("POST", "/api/vlans/eth0.10/up", {"up": False})),
+    ("eth0.10", {}, ("POST", "/api/iface/eth0/up", {"up": False})),
+    # management interface is a bridge (br0, common on VM hosts)
+    ("br0", {"br0": {"members": ["eth0"]}}, ("DELETE", "/api/bridges/br0", None)),
+    ("br0", {"br0": {"members": ["eth0"]}}, ("POST", "/api/bridges/br0/up", {"up": False})),
+    # management interface is a member of a bridge
+    ("eth0", {"br-x": {"members": ["eth0", "eth1"]}}, ("DELETE", "/api/bridges/br-x", None)),
+    ("eth0", {"br-x": {"members": ["eth0", "eth1"]}}, ("POST", "/api/bridges/br-x/up", {"up": False})),
+])
+def test_protected_refuses_cutting_its_lifeline(system, monkeypatch, mgmt, bridges, request_):
+    client, calls = system
+    app._config["management_interface"] = mgmt
+    monkeypatch.setattr(app, "get_all_bridges", lambda: bridges)
+    method, url, body = request_
+    r = client().open(url, method=method, json=body)
+    assert r.status_code == 403 and "protected" in r.get_json()["stderr"]
+    assert calls == []
+
+
+def test_unprotected_allows_it_and_unrelated_things_always(system, monkeypatch):
+    client, calls = system
+    app._config["management_interface"] = "eth0.10"
+    monkeypatch.setattr(app, "get_all_bridges", lambda: {"br-lab": {"members": ["eth1.100"]}})
+    c = client()
+    assert c.delete("/api/bridges/br-lab").get_json()["ok"]          # not on its lifeline
+    assert c.post("/api/iface/eth1/up", json={"up": False}).get_json()["ok"]
+    app._config["protect_management"] = False
+    assert c.delete("/api/vlans/eth0.10").get_json()["ok"]
+    assert c.post("/api/iface/eth0/up", json={"up": False}).get_json()["ok"]
+    assert [x[0] for x in calls] == ["del-br", "up", "del-vlan", "up"]
+
+
+def test_page_is_told_the_lifeline(lab, monkeypatch):
+    client, _ = lab
+    monkeypatch.setattr(app, "get_all_bridges", lambda: {"br0": {"members": ["eth0"]}})
+    assert client().get("/api/interfaces").get_json()["mgmt"]["lifeline"] == ["br0", "eth0"]
+
+
+def test_boot_reapply_skips_custom_named_vlans_on_it(lab, monkeypatch):
+    applied = []
+    monkeypatch.setattr(app, "apply_netem", lambda i, c: applied.append(i) or {"ok": True})
+    app._reapply_tc({"wan1": {"latency_ms": 5}, "eth1.100": {"latency_ms": 7}}, set())
+    assert applied == ["eth1.100"]                        # wan1 is a VLAN on eth0
+
+
+def test_state_save_needs_no_ip_call_without_a_management_interface(lab, monkeypatch):
+    calls = []
+    monkeypatch.setattr(app, "list_vlan_interfaces", lambda: calls.append(1) or [])
+    app._config["management_interface"] = ""
+    app._save_state()
+    assert calls == []

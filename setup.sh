@@ -414,8 +414,11 @@ detect_mgmt() {
     echo "$dev"
 }
 config_mgmt() {
-    local f
-    for f in "${INSTALL_DIR}/config.json" "${STATE_DIR}/config.json"; do
+    # The install directory's config.json only counts before v9.3; under a v9.3
+    # unit a file there is a stray (see migrate_legacy_state) and is ignored.
+    local f files=("${STATE_DIR}/config.json")
+    installed_unit_is_legacy && files=("${INSTALL_DIR}/config.json" "${STATE_DIR}/config.json")
+    for f in "${files[@]}"; do
         [ -f "$f" ] || continue
         python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("management_interface") or "")' \
             "$f" 2>/dev/null && return 0
